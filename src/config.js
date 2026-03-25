@@ -6,10 +6,10 @@
  */
 const config = {
   // Your Zooniverse project ID (find it in the Project Builder URL or API)
-  projectId: '31425',
+  projectId: '32203',
 
   // Your workflow ID (find it in the Project Builder under Workflows)
-  workflowId: null, // null = use the project's default active workflow
+  workflowId: '31480', // null = use the project's default active workflow
 
   // Environment: 'production' or 'staging'
   environment: 'production',
@@ -18,7 +18,7 @@ const config = {
   subjectBatchSize: 10,
 
   // Project metadata (displayed in the UI)
-  title: 'Zoo Playground Classifier',
+  title: 'Cosmic Canvas',
 
   // Data rights / privacy / Terms & Conditions
   links: {
