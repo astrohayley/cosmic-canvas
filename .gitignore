@@ -9,7 +9,6 @@
 # Production
 /build
 /dist
-/src/config.js
 
 # Exported API data
 /exports
