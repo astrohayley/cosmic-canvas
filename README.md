@@ -1,12 +1,16 @@
-# Zoo Playground — Zooniverse IFE Classifier Template
+# Cosmic Canvas — Zooniverse Brush Tool Classifier
 
-A forkable, config-driven Zooniverse classifier. Point it at any Zooniverse project and get a working classification interface.
+An interactive drawing classifier based on the [Zooniverse IFE Classifier Template](https://github.com/kieftrav/Zooniverse-IFE-April-2026-Workshop). This specialized version includes a brush tool for annotation tasks requiring freehand drawing.
+
+## Attribution
+
+This project is forked from the excellent Zooniverse IFE Classifier Template by [@kieftrav](https://github.com/kieftrav). Original repository: https://github.com/kieftrav/Zooniverse-IFE-April-2026-Workshop
 
 ## Quick Start
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/zoo-playground.git
-cd zoo-playground
+git clone https://github.com/astrohayley/cosmic-canvas.git
+cd cosmic-canvas
 npm install
 ```
 
