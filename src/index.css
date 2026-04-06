@@ -389,6 +389,51 @@ code {
   flex-wrap: wrap;
 }
 
+.brush-mode-toggle {
+  display: inline-flex;
+  border: 1px solid var(--color-dark-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.brush-mode-btn {
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--color-transparent);
+  color: var(--color-light-gray);
+  border: 0;
+  border-right: 1px solid var(--color-dark-border);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.brush-mode-btn:last-child {
+  border-right: 0;
+}
+
+.brush-mode-btn:hover {
+  background: var(--color-hover-bg);
+  color: var(--color-white);
+}
+
+.brush-mode-btn.active {
+  background: var(--color-success);
+  color: var(--color-white);
+}
+
+.brush-mode-indicator {
+  font-size: 12px;
+  color: var(--color-light-gray);
+}
+
+.brush-mode-indicator.eraser {
+  color: #ffb3b3;
+}
+
+.brush-mode-indicator.brush {
+  color: #b6f0d2;
+}
+
 .brush-control-label {
   display: flex;
   align-items: center;
@@ -413,6 +458,11 @@ code {
   border: 2px solid var(--color-dark-border);
   cursor: pointer;
   padding: 0;
+}
+
+.brush-color-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 .brush-color-btn.active {

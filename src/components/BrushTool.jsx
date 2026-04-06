@@ -27,19 +27,46 @@ function BrushTool({ subject, onAnnotate, brushConfig }) {
   const canvasRef = useRef(null);
   const [brushSize, setBrushSize] = useState(brushConfig?.defaultSize || 12);
   const [brushColor, setBrushColor] = useState(brushConfig?.colors?.[0] || '#00ff00');
+  const [toolMode, setToolMode] = useState('brush');
 
   const imageUrl = subject ? getImageUrl(subject) : null;
+  const isEraser = toolMode === 'eraser';
+  const displayColor = isEraser ? '#ffffff' : brushColor;
+  const brushAlpha = isEraser ? 1 : (brushConfig?.opacity || 0.5);
+
+  const applyCompositeMode = useCallback((mode) => {
+    const instance = canvasRef.current;
+    if (!instance?.ctx) return;
+
+    const drawingMode = mode === 'eraser' ? 'destination-out' : 'source-over';
+    const drawingCtx = instance.ctx.drawing;
+    const tempCtx = instance.ctx.temp;
+
+    // Keep temp in normal draw mode so it can act as an opaque erase mask.
+    if (tempCtx && tempCtx.globalCompositeOperation !== 'source-over') {
+      tempCtx.globalCompositeOperation = 'source-over';
+    }
+    if (drawingCtx && drawingCtx.globalCompositeOperation !== drawingMode) {
+      drawingCtx.globalCompositeOperation = drawingMode;
+    }
+  }, []);
 
   // Clear strokes when subject changes
   useEffect(() => {
     canvasRef.current?.clear();
+    setToolMode('brush');
   }, [subject?.id]);
 
+  useEffect(() => {
+    applyCompositeMode(toolMode);
+  }, [toolMode, applyCompositeMode]);
+
   const handleChange = useCallback(() => {
+    applyCompositeMode(toolMode);
     if (canvasRef.current && onAnnotate) {
       onAnnotate(canvasRef.current.getSaveData());
     }
-  }, [onAnnotate]);
+  }, [applyCompositeMode, onAnnotate, toolMode]);
 
   const handleUndo = () => {
     canvasRef.current?.undo();
@@ -72,18 +99,41 @@ function BrushTool({ subject, onAnnotate, brushConfig }) {
           ref={canvasRef}
           onChange={handleChange}
           imgSrc={imageUrl || ''}
-          brushColor={hexToRgba(brushColor, brushConfig?.opacity || 0.5)}
+          brushColor={hexToRgba(displayColor, brushAlpha)}
           brushRadius={brushSize}
           canvasWidth={500}
           canvasHeight={500}
           lazyRadius={0}
-          catenaryColor={hexToRgba(brushColor, brushConfig?.opacity || 0.5)}
+          catenaryColor={hexToRgba(displayColor, 0.9)}
           hideInterface={false}
           backgroundColor="#000"
         />
       </div>
 
       <div className="brush-controls">
+        <div className="brush-mode-toggle" role="group" aria-label="Drawing tool mode">
+          <button
+            type="button"
+            className={`brush-mode-btn ${!isEraser ? 'active' : ''}`}
+            onClick={() => setToolMode('brush')}
+            aria-pressed={!isEraser}
+          >
+            Brush
+          </button>
+          <button
+            type="button"
+            className={`brush-mode-btn ${isEraser ? 'active' : ''}`}
+            onClick={() => setToolMode('eraser')}
+            aria-pressed={isEraser}
+          >
+            Eraser
+          </button>
+        </div>
+
+        <span className={`brush-mode-indicator ${isEraser ? 'eraser' : 'brush'}`}>
+          Mode: {isEraser ? 'Eraser' : 'Brush'}
+        </span>
+
         <label className="brush-control-label">
           <span style={{ fontSize: '12px' }}>Size: {brushSize}px</span>
           <input
@@ -104,6 +154,7 @@ function BrushTool({ subject, onAnnotate, brushConfig }) {
               style={{ backgroundColor: c }}
               onClick={() => setBrushColor(c)}
               title={c}
+              disabled={isEraser}
             />
           ))}
         </div>
