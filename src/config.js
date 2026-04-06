@@ -31,7 +31,7 @@ const config = {
   // Brush tool configuration
   brushTool: {
     colors: ['#00ff00'], // '#ff0000', '#00bfff', '#ffff00', '#ff00ff', '#ffffff'],
-    opacity: 0.4,
+    opacity: 0.3,
     defaultSize: 12
   }
 };
