@@ -23,13 +23,17 @@ function hexToRgba(hex, alpha = 0.5) {
  *   onAnnotate  — called with (saveData: string) on every stroke change
  *   brushConfig — brush tool configuration { colors, opacity, defaultSize }
  */
-function BrushTool({ subject, onAnnotate, brushConfig }) {
+function BrushTool({ subject, selectedImageIndex = 0, onImageSelect, onAnnotate, brushConfig }) {
   const canvasRef = useRef(null);
   const [brushSize, setBrushSize] = useState(brushConfig?.defaultSize || 12);
   const [brushColor, setBrushColor] = useState(brushConfig?.colors?.[0] || '#00ff00');
   const [toolMode, setToolMode] = useState('brush');
 
-  const imageUrl = subject ? getImageUrl(subject) : null;
+  const imageEntries = subject ? getImageEntries(subject) : [];
+  const activeImageIndex = imageEntries.length > 0
+    ? Math.max(0, Math.min(selectedImageIndex, imageEntries.length - 1))
+    : 0;
+  const imageUrl = imageEntries[activeImageIndex]?.url || null;
   const isEraser = toolMode === 'eraser';
   const displayColor = isEraser ? '#ffffff' : brushColor;
   const brushAlpha = isEraser ? 1 : (brushConfig?.opacity || 0.5);
@@ -94,6 +98,28 @@ function BrushTool({ subject, onAnnotate, brushConfig }) {
 
   return (
     <div className="brush-tool">
+      {imageEntries.length > 1 && (
+        <div className="image-thumbnails" role="tablist" aria-label="Subject images">
+          {imageEntries.map((entry, idx) => {
+            const isActive = idx === activeImageIndex;
+            return (
+              <button
+                key={`${entry.locationIndex}-${entry.mimeType}`}
+                type="button"
+                className={`thumbnail-btn${isActive ? ' active' : ''}`}
+                onClick={() => onImageSelect?.(idx)}
+                aria-label={`Show image ${idx + 1}`}
+                aria-selected={isActive}
+                title={`Image ${idx + 1}`}
+              >
+                <img src={entry.url} alt={`Thumbnail ${idx + 1}`} className="thumbnail-image" />
+                <span className="thumbnail-count">{idx + 1}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       <div className="brush-canvas-wrap" onWheelCapture={handleWheel}>
         <CanvasDraw
           ref={canvasRef}
@@ -178,14 +204,19 @@ function BrushTool({ subject, onAnnotate, brushConfig }) {
   );
 }
 
-function getImageUrl(subject) {
-  if (!subject.locations) return null;
-  for (const location of subject.locations) {
-    for (const [mimeType, url] of Object.entries(location)) {
-      if (mimeType.startsWith('image/')) return url;
-    }
-  }
-  return null;
+function getImageEntries(subject) {
+  if (!subject?.locations) return [];
+
+  const entries = [];
+  subject.locations.forEach((location, locationIndex) => {
+    Object.entries(location).forEach(([mimeType, url]) => {
+      if (mimeType.startsWith('image/')) {
+        entries.push({ mimeType, url, locationIndex });
+      }
+    });
+  });
+
+  return entries;
 }
 
 export default BrushTool;

@@ -16,6 +16,7 @@ function App() {
   const [workflow, setWorkflow] = useState(null);
   const [subjects, setSubjects] = useState([]);
   const [subjectIndex, setSubjectIndex] = useState(0);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [brushAnnotationData, setBrushAnnotationData] = useState(null);
   const [classificationStartedAt, setClassificationStartedAt] = useState(null);
 
@@ -79,6 +80,7 @@ function App() {
 
   const advanceSubject = useCallback(() => {
     setSubjectIndex(prev => prev < subjects.length - 1 ? prev + 1 : 0);
+    setSelectedImageIndex(0);
     setBrushAnnotationData(null);
     setSubmissionResult(null);
     setClassificationStartedAt(new Date().toISOString());
@@ -200,6 +202,8 @@ function App() {
             <div className="classify-subject">
               <BrushTool
                 subject={currentSubject}
+                selectedImageIndex={selectedImageIndex}
+                onImageSelect={setSelectedImageIndex}
                 onAnnotate={setBrushAnnotationData}
                 brushConfig={config.brushTool}
               />

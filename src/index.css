@@ -375,6 +375,56 @@ code {
   overflow: hidden;
 }
 
+.image-thumbnails {
+  display: flex;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--color-dark-border);
+  overflow-x: auto;
+  background: #111319;
+}
+
+.thumbnail-btn {
+  width: 54px;
+  height: 54px;
+  border: 1px solid var(--color-dark-border);
+  border-radius: var(--radius-sm);
+  background: #000;
+  padding: 0;
+  cursor: pointer;
+  overflow: hidden;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.thumbnail-btn:hover {
+  border-color: var(--color-light-gray);
+}
+
+.thumbnail-btn.active {
+  border-color: var(--color-success);
+  box-shadow: 0 0 0 1px var(--color-success);
+}
+
+.thumbnail-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.thumbnail-count {
+  position: absolute;
+  right: 4px;
+  bottom: 3px;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--color-white);
+  background: rgba(0, 0, 0, 0.7);
+  padding: 2px 4px;
+  border-radius: 10px;
+}
+
 .brush-canvas-wrap {
   display: flex;
   justify-content: center;
@@ -489,6 +539,13 @@ code {
 .brush-action-btn:hover {
   background: var(--color-hover-bg);
   color: var(--color-white);
+}
+
+@media (max-width: 768px) {
+  .thumbnail-btn {
+    width: 46px;
+    height: 46px;
+  }
 }
 
 /* Typography resets */
