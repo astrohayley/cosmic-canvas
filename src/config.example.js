@@ -26,6 +26,27 @@ const config = {
     termsOfUse: 'https://www.zooniverse.org/privacy#terms',
     dataRetention: null, // Add your project-specific data retention URL
     talkBoard: null,     // Auto-populated from project ID if null
+  },
+
+  // Brush tool configuration
+  brushTool: {
+    colors: ['#00ff00'],
+    opacity: 0.3,
+    defaultSize: 12,
+    machineMask: {
+      enabled: true,
+      threshold: 128,
+      invert: false,
+      rowStep: 2,
+      colStep: 2,
+      minRunLength: 2,
+      maxLines: 8000,
+      // Color is taken from the active drawing color.
+      opacity: 0.28,
+      brushRadius: 1,
+      canvasWidth: 500,
+      canvasHeight: 500
+    }
   }
 };
 

@@ -32,7 +32,25 @@ const config = {
   brushTool: {
     colors: ['#00bfff'], // '#00ff00', '#ff0000', '#00bfff', '#ffff00', '#ff00ff', '#ffffff'],
     opacity: 0.3,
-    defaultSize: 12
+    defaultSize: 12,
+    machineMask: {
+      enabled: true,
+      // Brightness threshold 0-255 used for fallback machine seed generation.
+      threshold: 128,
+      // Set true when targets are darker-than-background.
+      invert: false,
+      // Sampling controls for performance/fidelity tradeoff.
+      rowStep: 2,
+      colStep: 2,
+      minRunLength: 2,
+      maxLines: 8000,
+      // Visual settings for the seeded mask overlay.
+      // Color is taken from the active drawing color.
+      opacity: 0.28,
+      brushRadius: 1,
+      canvasWidth: 500,
+      canvasHeight: 500
+    }
   }
 };
 

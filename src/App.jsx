@@ -18,6 +18,7 @@ function App() {
   const [subjectIndex, setSubjectIndex] = useState(0);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [brushAnnotationData, setBrushAnnotationData] = useState(null);
+  const [maskSeedInfo, setMaskSeedInfo] = useState(null);
   const [classificationStartedAt, setClassificationStartedAt] = useState(null);
 
   const [loading, setLoading] = useState(true);
@@ -82,6 +83,7 @@ function App() {
     setSubjectIndex(prev => prev < subjects.length - 1 ? prev + 1 : 0);
     setSelectedImageIndex(0);
     setBrushAnnotationData(null);
+    setMaskSeedInfo(null);
     setSubmissionResult(null);
     setClassificationStartedAt(new Date().toISOString());
   }, [subjects.length]);
@@ -103,6 +105,7 @@ function App() {
           user_language: navigator.language,
           utc_offset: String(new Date().getTimezoneOffset() * 60),
           source: 'zoo-playground',
+          machine_mask: maskSeedInfo,
           viewport: { width: window.innerWidth, height: window.innerHeight }
         },
         links: {
@@ -205,6 +208,7 @@ function App() {
                 selectedImageIndex={selectedImageIndex}
                 onImageSelect={setSelectedImageIndex}
                 onAnnotate={setBrushAnnotationData}
+                onMaskInfo={setMaskSeedInfo}
                 brushConfig={config.brushTool}
               />
               {subjects.length > 0 && (
