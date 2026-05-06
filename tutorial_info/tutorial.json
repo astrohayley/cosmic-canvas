@@ -1,0 +1,26 @@
+[
+  {
+    "id": 1,
+    "title": "Welcome to Tidal Tales!",
+    "description": "Welcome! In this project, a model starts each subject with a first-pass mask. Your job is to quickly improve that mask so the merger and tidal features are better captured.",
+    "image": "merger_tutorial.gif"
+  },
+  {
+    "id": 2,
+    "title": "Edit the Machine Mask",
+    "description": "Use Brush to add missing regions and Eraser to remove regions that do not belong. You can change brush size for fine details or larger edits. You are correcting the machine guess, not redrawing everything from scratch. If you'd like to start over, use Reset mask to restore the original machine prediction.",
+    "image": "merger_tutorial.gif"
+  },
+  {
+    "id": 3,
+    "title": "What to Keep in the Mask",
+    "description": "Keep the central galaxy (or galaxies) and merger-connected tidal structures like tails, bridges, shells, and diffuse light. Remove isolated artifacts or unrelated sources. If you are unsure, include emission that seems plausibly connected to the merger.",
+    "image": "euclid-merger-examples.png"
+  },
+  {
+    "id": 4,
+    "title": "Review, Reset, and Submit",
+    "description": "Before clicking Done, take one quick look over your edits. If you want to start over, use Reset mask to restore the original machine prediction. When it looks good, click Done and move to the next subject.",
+    "image": "Euclid_spots_interacting_galaxies.jpg"
+  }
+]

@@ -1,7 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import panoptesService from './services/panoptesService';
 import BrushTool from './components/BrushTool.jsx';
+import TutorialPopup from './components/TutorialPopup.jsx';
 import config from './configLoader';
+import tutorialCardsRaw from '../tutorial_info/tutorial.json';
+import mergerTutorialGif from '../tutorial_info/merger_tutorial.gif';
+import euclidMergerExamplesPng from '../tutorial_info/euclid-merger-examples.png';
+import euclidSpotsInteractingGalaxiesJpg from '../tutorial_info/Euclid_spots_interacting_galaxies.jpg';
 
 // Resolve settings once: URL params override config
 const params = new URLSearchParams(window.location.search);
@@ -11,12 +16,37 @@ const settings = {
   environment: params.get('env') || config.environment,
 };
 
+const tutorialImageMap = {
+  'merger_tutorial.gif': mergerTutorialGif,
+  'euclid-merger-examples.png': euclidMergerExamplesPng,
+  'Euclid_spots_interacting_galaxies.jpg': euclidSpotsInteractingGalaxiesJpg,
+};
+
+const tutorialCards = Array.isArray(tutorialCardsRaw)
+  ? tutorialCardsRaw.map((card, index) => ({
+    id: card?.id ?? index + 1,
+    title: typeof card?.title === 'string' && card.title.trim()
+      ? card.title.trim()
+      : `Tutorial Step ${index + 1}`,
+    description: typeof card?.description === 'string' ? card.description.trim() : '',
+    instructions: typeof card?.instructions === 'string' ? card.instructions.trim() : '',
+    imageUrl: typeof card?.image === 'string' ? (tutorialImageMap[card.image] || null) : null,
+    imageAlt: typeof card?.title === 'string' && card.title.trim()
+      ? card.title.trim()
+      : `Tutorial image ${index + 1}`,
+  }))
+  : [];
+
 function App() {
+  const tutorialStorageKey = `cosmic-canvas:tutorial-seen:${settings.projectId || 'default'}`;
+
   const [project, setProject] = useState(null);
   const [workflow, setWorkflow] = useState(null);
   const [subjects, setSubjects] = useState([]);
   const [subjectIndex, setSubjectIndex] = useState(0);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [brushAnnotationData, setBrushAnnotationData] = useState(null);
+  const [maskSeedInfo, setMaskSeedInfo] = useState(null);
   const [classificationStartedAt, setClassificationStartedAt] = useState(null);
 
   const [loading, setLoading] = useState(true);
@@ -27,10 +57,25 @@ function App() {
   const [activeTab, setActiveTab] = useState('classify');
   const [authUser, setAuthUser] = useState(null);
   const [exporting, setExporting] = useState({});
+  const [showTutorial, setShowTutorial] = useState(() => {
+    try {
+      return window.localStorage.getItem(tutorialStorageKey) !== 'true';
+    } catch {
+      return true;
+    }
+  });
+  const [tutorialIndex, setTutorialIndex] = useState(0);
 
   const currentSubject = subjects[subjectIndex] || null;
   const talkUrl = config.links.talkBoard ||
     (project ? `https://www.zooniverse.org/projects/${project.slug}/talk` : null);
+  const subjectTalkUrl = project && currentSubject
+    ? `https://www.zooniverse.org/projects/${project.slug}/talk/subjects/${currentSubject.id}`
+    : null;
+
+  useEffect(() => {
+    document.title = config.title || 'Tidal Tales';
+  }, []);
 
   useEffect(() => {
     if (!settings.projectId) {
@@ -79,10 +124,45 @@ function App() {
 
   const advanceSubject = useCallback(() => {
     setSubjectIndex(prev => prev < subjects.length - 1 ? prev + 1 : 0);
+    setSelectedImageIndex(0);
     setBrushAnnotationData(null);
+    setMaskSeedInfo(null);
     setSubmissionResult(null);
     setClassificationStartedAt(new Date().toISOString());
   }, [subjects.length]);
+
+  const closeTutorial = useCallback(() => {
+    setShowTutorial(false);
+    setTutorialIndex(0);
+    try {
+      window.localStorage.setItem(tutorialStorageKey, 'true');
+    } catch {
+      // Ignore localStorage failures (private browsing, restricted storage, etc).
+    }
+  }, [tutorialStorageKey]);
+
+  const openTutorial = useCallback(() => {
+    if (!tutorialCards.length) return;
+    setTutorialIndex(0);
+    setShowTutorial(true);
+  }, []);
+
+  const goToNextTutorialCard = useCallback(() => {
+    if (tutorialIndex >= tutorialCards.length - 1) {
+      closeTutorial();
+      return;
+    }
+    setTutorialIndex(prev => prev + 1);
+  }, [closeTutorial, tutorialIndex]);
+
+  const goToPreviousTutorialCard = useCallback(() => {
+    setTutorialIndex(prev => (prev > 0 ? prev - 1 : 0));
+  }, []);
+
+  const goToTutorialCard = useCallback((index) => {
+    if (index < 0 || index > tutorialCards.length - 1) return;
+    setTutorialIndex(index);
+  }, []);
 
   const handleSubmit = async () => {
     if (!currentSubject || !workflow) return;
@@ -101,6 +181,7 @@ function App() {
           user_language: navigator.language,
           utc_offset: String(new Date().getTimezoneOffset() * 60),
           source: 'zoo-playground',
+          machine_mask: maskSeedInfo,
           viewport: { width: window.innerWidth, height: window.innerHeight }
         },
         links: {
@@ -149,7 +230,7 @@ function App() {
       <header className="app-header">
         <div className="header-left">
           <h1 style={{ fontSize: '18px', margin: 0 }}>
-            {project?.display_name || config.title}
+            {config.title}
           </h1>
           <span className="text-muted" style={{ fontSize: '12px' }}>
             {settings.environment} · {classified} classified · {authUser ? `signed in as ${authUser}` : 'anonymous'}
@@ -162,6 +243,11 @@ function App() {
           >
             Classify
           </button>
+          {tutorialCards.length > 0 && (
+            <button onClick={openTutorial} className="tab-button">
+              Tutorial
+            </button>
+          )}
           {project && (
             <button
               onClick={() => setActiveTab('project')}
@@ -200,8 +286,12 @@ function App() {
             <div className="classify-subject">
               <BrushTool
                 subject={currentSubject}
+                selectedImageIndex={selectedImageIndex}
+                onImageSelect={setSelectedImageIndex}
                 onAnnotate={setBrushAnnotationData}
+                onMaskInfo={setMaskSeedInfo}
                 brushConfig={config.brushTool}
+                subjectTalkUrl={subjectTalkUrl}
               />
               {subjects.length > 0 && (
                 <div className="subject-progress">
@@ -273,6 +363,17 @@ function App() {
           Powered by Zooniverse · Panoptes API · zoo-playground
         </span>
       </footer>
+
+      {showTutorial && tutorialCards.length > 0 && (
+        <TutorialPopup
+          cards={tutorialCards}
+          currentIndex={tutorialIndex}
+          onNext={goToNextTutorialCard}
+          onPrevious={goToPreviousTutorialCard}
+          onClose={closeTutorial}
+          onSelectStep={goToTutorialCard}
+        />
+      )}
     </div>
   );
 }
