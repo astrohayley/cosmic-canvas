@@ -18,7 +18,7 @@ const config = {
   subjectBatchSize: 10,
 
   // Project metadata (displayed in the UI)
-  title: 'Cosmic Canvas',
+  title: 'Tidal Tales',
 
   // Data rights / privacy / Terms & Conditions
   links: {

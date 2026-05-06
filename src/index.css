@@ -426,9 +426,28 @@ code {
 }
 
 .brush-canvas-wrap {
+  position: relative;
   display: flex;
   justify-content: center;
   background: #000;
+}
+
+.subject-talk-link {
+  position: absolute;
+  right: var(--space-sm);
+  top: var(--space-sm);
+  padding: 6px 10px;
+  border: 1px solid var(--color-dark-border);
+  border-radius: var(--radius-sm);
+  background: rgba(17, 19, 25, 0.84);
+  color: var(--color-white);
+  text-decoration: none;
+  font-size: 12px;
+  z-index: 2;
+}
+
+.subject-talk-link:hover {
+  background: var(--color-hover-bg);
 }
 
 .brush-controls {
@@ -570,6 +589,187 @@ code {
   .thumbnail-btn {
     width: 46px;
     height: 46px;
+  }
+}
+
+/* Tutorial popup */
+.tutorial-popup {
+  position: fixed;
+  right: var(--space-lg);
+  bottom: var(--space-lg);
+  width: min(440px, calc(100vw - 2 * var(--space-lg)));
+  max-height: calc(100vh - 2 * var(--space-lg));
+  display: flex;
+  flex-direction: column;
+  background: #111319;
+  border: 1px solid var(--color-dark-border);
+  border-radius: 12px;
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.45);
+  z-index: 1000;
+}
+
+.tutorial-popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--color-dark-border);
+}
+
+.tutorial-popup-kicker {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #b8cfec;
+}
+
+.tutorial-close-button {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--color-dark-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-transparent);
+  color: var(--color-light-gray);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.tutorial-close-button:hover {
+  background: var(--color-hover-bg);
+  color: var(--color-white);
+}
+
+.tutorial-popup-media {
+  background: #06080d;
+  border-bottom: 1px solid var(--color-dark-border);
+}
+
+.tutorial-popup-image {
+  width: 100%;
+  display: block;
+  max-height: 230px;
+  object-fit: contain;
+}
+
+.tutorial-image-fallback {
+  padding: var(--space-lg);
+  color: var(--color-light-gray);
+  text-align: center;
+  font-size: 13px;
+}
+
+.tutorial-popup-content {
+  padding: var(--space-md);
+  overflow-y: auto;
+}
+
+.tutorial-popup-title {
+  margin-top: 0;
+  margin-bottom: var(--space-sm);
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.tutorial-popup-copy {
+  margin-bottom: var(--space-sm);
+  font-size: 14px;
+  line-height: 1.45;
+  color: #dee6f3;
+  opacity: 0.9;
+}
+
+.tutorial-popup-instructions {
+  color: #b6f0d2;
+}
+
+.tutorial-popup-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-top: 1px solid var(--color-dark-border);
+}
+
+.tutorial-popup-progress {
+  font-size: 12px;
+  color: var(--color-light-gray);
+  white-space: nowrap;
+}
+
+.tutorial-popup-controls {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.tutorial-control-button {
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-dark-border);
+  background: var(--color-transparent);
+  color: var(--color-light-gray);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tutorial-control-button:hover {
+  background: var(--color-hover-bg);
+  color: var(--color-white);
+}
+
+.tutorial-control-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.tutorial-control-button-primary {
+  background: var(--color-success);
+  border-color: var(--color-success);
+  color: var(--color-white);
+}
+
+.tutorial-control-button-primary:hover {
+  background: #53c465;
+  color: var(--color-white);
+}
+
+.tutorial-popup-steps {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 var(--space-md) var(--space-md);
+}
+
+.tutorial-step-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  border: 0;
+  background: #4a525f;
+  cursor: pointer;
+  padding: 0;
+}
+
+.tutorial-step-dot.active {
+  background: var(--color-success);
+}
+
+@media (max-width: 768px) {
+  .tutorial-popup {
+    right: var(--space-sm);
+    bottom: var(--space-sm);
+    width: calc(100vw - 2 * var(--space-sm));
+    max-height: calc(100vh - 2 * var(--space-sm));
+  }
+
+  .tutorial-popup-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .tutorial-popup-controls {
+    justify-content: space-between;
   }
 }
 

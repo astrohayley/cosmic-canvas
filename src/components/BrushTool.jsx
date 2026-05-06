@@ -40,7 +40,15 @@ function normalizeMaskConfig(machineMask = {}) {
  *   onMaskInfo  — called with metadata when an initial machine mask is seeded
  *   brushConfig — brush tool configuration { colors, opacity, defaultSize }
  */
-function BrushTool({ subject, selectedImageIndex = 0, onImageSelect, onAnnotate, onMaskInfo, brushConfig }) {
+function BrushTool({
+  subject,
+  selectedImageIndex = 0,
+  onImageSelect,
+  onAnnotate,
+  onMaskInfo,
+  brushConfig,
+  subjectTalkUrl
+}) {
   const canvasRef = useRef(null);
   const undoInProgressRef = useRef(false);
   const [brushSize, setBrushSize] = useState(brushConfig?.defaultSize || 12);
@@ -269,6 +277,17 @@ function BrushTool({ subject, selectedImageIndex = 0, onImageSelect, onAnnotate,
           hideInterface={false}
           backgroundColor="#000"
         />
+
+        {subjectTalkUrl && (
+          <a
+            href={subjectTalkUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="subject-talk-link"
+          >
+            View on Talk
+          </a>
+        )}
       </div>
 
       <div className="brush-controls">
