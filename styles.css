@@ -1,5 +1,4 @@
 :root {
-  /* Color Variables */
   --color-error: #ff6b6b;
   --color-success: #4CAF50;
   --color-muted: #6c757d;
@@ -12,12 +11,10 @@
   --color-success-bg: #1b3a1b;
   --color-white: white;
   --color-transparent: transparent;
-  
-  /* Border Radius */
+
   --radius-sm: 4px;
   --radius-md: 8px;
-  
-  /* Spacing */
+
   --space-xs: 5px;
   --space-sm: 10px;
   --space-md: 15px;
@@ -25,6 +22,9 @@
   --space-xl: 24px;
   --space-2xl: 30px;
 }
+
+/* HTML [hidden] must win over .center-state { display: flex } etc. */
+[hidden] { display: none !important; }
 
 body {
   margin: 0;
@@ -41,7 +41,6 @@ code {
     monospace;
 }
 
-/* Utility Classes - Colors */
 .text-error { color: var(--color-error); }
 .text-success { color: var(--color-success); }
 .text-muted { color: var(--color-muted); }
@@ -58,7 +57,6 @@ code {
 .border-success { border: 1px solid var(--color-success); }
 .border-dark { border: 1px solid var(--color-dark-border); }
 
-/* Utility Classes - Spacing */
 .mt-neg-10 { margin-top: -10px; }
 .mt-0 { margin-top: 0; }
 .mt-xs { margin-top: var(--space-xs); }
@@ -83,33 +81,28 @@ code {
 
 .pb-0 { padding-bottom: 0; }
 
-/* Utility Classes - Layout */
 .flex { display: flex; }
 .block { display: block; }
 .gap-sm { gap: var(--space-sm); }
 .opacity-70 { opacity: 0.7; }
 .opacity-60 { opacity: 0.6; }
 
-/* Utility Classes - Border Radius */
 .rounded-sm { border-radius: var(--radius-sm); }
 .rounded-md { border-radius: var(--radius-md); }
 .rounded-t-md { border-top-left-radius: var(--radius-md); border-top-right-radius: var(--radius-md); }
 .rounded-b-md { border-bottom-left-radius: var(--radius-md); border-bottom-right-radius: var(--radius-md); }
 
-/* Utility Classes - Text */
 .text-left { text-align: left; }
 .font-bold { font-weight: bold; }
 .font-normal { font-weight: normal; }
 .whitespace-pre-wrap { white-space: pre-wrap; }
 .break-words { word-wrap: break-word; }
 
-/* Utility Classes - Misc */
 .cursor-pointer { cursor: pointer; }
 .cursor-not-allowed { cursor: not-allowed; }
 .transition-all { transition: all 0.2s; }
 .overflow-auto { overflow: auto; }
 
-/* State Classes */
 .success {
   background-color: var(--color-success-bg);
   border: 1px solid var(--color-success);
@@ -123,7 +116,6 @@ code {
 .success-text { color: var(--color-success); }
 .error-text { color: var(--color-error); }
 
-/* App Layout */
 .app {
   display: flex;
   flex-direction: column;
@@ -162,7 +154,6 @@ code {
   text-align: center;
 }
 
-/* Tab buttons */
 .tab-button {
   padding: var(--space-xs) var(--space-md);
   background: var(--color-transparent);
@@ -185,7 +176,6 @@ code {
   color: var(--color-white);
 }
 
-/* Classify layout: subject left, task right */
 .classify-layout {
   display: flex;
   gap: var(--space-lg);
@@ -211,7 +201,6 @@ code {
   }
 }
 
-/* Subject viewer */
 .subject-viewer {
   background: var(--color-dark-bg);
   border-radius: var(--radius-md);
@@ -246,7 +235,6 @@ code {
   padding: var(--space-xs) 0;
 }
 
-/* Classify actions */
 .classify-actions {
   display: flex;
   gap: var(--space-sm);
@@ -290,7 +278,6 @@ code {
   cursor: not-allowed;
 }
 
-/* Center state (loading, error) */
 .center-state {
   display: flex;
   flex-direction: column;
@@ -300,7 +287,6 @@ code {
   text-align: center;
 }
 
-/* About page */
 .about-page {
   max-width: 700px;
 }
@@ -321,7 +307,6 @@ code {
   text-decoration: underline;
 }
 
-/* Form inputs */
 .form-input {
   padding: 8px 12px;
   width: 100%;
@@ -333,7 +318,6 @@ code {
   font-size: 14px;
 }
 
-/* Export bar */
 .export-bar {
   display: flex;
   align-items: center;
@@ -368,7 +352,6 @@ code {
   cursor: not-allowed;
 }
 
-/* Brush tool */
 .brush-tool {
   background: var(--color-dark-bg);
   border-radius: var(--radius-md);
@@ -441,7 +424,6 @@ code {
   color: var(--color-white);
 }
 
-/* Typography resets */
 h1 { margin-bottom: 0.2em; }
 
 p {

@@ -1,18 +1,109 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
-    <meta
-      name="description"
-      content="Experimental Zooniverse Classifier"
-    />
-    <title>Experimental Zooniverse Classifier</title>
-  </head>
-  <body>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
-    <div id="root"></div>
-    <script type="module" src="/src/index.jsx"></script>
-  </body>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="description" content="Cosmic Canvas — a Zooniverse brush-tool classifier by Hayley Roberts" />
+  <title>Cosmic Canvas</title>
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="app-header">
+      <div class="header-left">
+        <h1 id="project-title" style="font-size: 18px; margin: 0;">Cosmic Canvas</h1>
+        <span class="text-muted" id="header-status" style="font-size: 12px;">
+          loading…
+        </span>
+      </div>
+      <nav class="header-nav">
+        <button class="tab-button active" data-tab="classify" type="button">Classify</button>
+        <button class="tab-button" data-tab="about" type="button" hidden>About</button>
+        <a class="tab-button" id="talk-link" target="_blank" rel="noopener noreferrer" hidden>Talk</a>
+        <button class="tab-button" id="auth-button" type="button">Sign in</button>
+      </nav>
+    </header>
+
+    <main class="app-main">
+      <div class="center-state" id="state-loading">
+        <p>Loading project from production…</p>
+      </div>
+
+      <div class="center-state" id="state-error" hidden>
+        <h2>Something went wrong</h2>
+        <p class="text-error" id="error-message"></p>
+        <p class="text-muted" style="font-size: 14px;">Try: ?project=32203 or ?project=31425</p>
+      </div>
+
+      <div class="classify-layout" id="tab-classify" hidden>
+        <div class="classify-subject">
+          <div class="brush-tool">
+            <div class="brush-canvas-wrap">
+              <canvas id="brush-canvas" width="500" height="500"></canvas>
+            </div>
+            <div class="brush-controls">
+              <label class="brush-control-label">
+                <span style="font-size: 12px;">Size: <span id="brush-size-label">12</span>px</span>
+                <input type="range" min="1" max="80" value="12" class="brush-slider" id="brush-size" />
+              </label>
+              <div class="brush-colors" id="brush-colors"></div>
+              <div class="brush-actions">
+                <button class="brush-action-btn" id="brush-undo" type="button" title="Undo">Undo</button>
+                <button class="brush-action-btn" id="brush-clear" type="button" title="Clear all">Clear</button>
+              </div>
+            </div>
+            <div class="subject-meta">
+              <span class="text-muted" style="font-size: 12px;">
+                Subject <span id="subject-id"></span> — draw on the image, then click Done
+              </span>
+            </div>
+          </div>
+          <div class="subject-progress">
+            <span class="text-muted" id="subject-progress-label" style="font-size: 12px;"></span>
+          </div>
+        </div>
+
+        <div class="classify-task">
+          <div id="task-ui"></div>
+          <div class="classify-actions">
+            <button class="submit-button" id="submit-button" type="button">Done</button>
+            <button class="skip-button" id="skip-button" type="button">Skip</button>
+          </div>
+          <div class="mt-sm p-sm rounded-sm" id="submission-result" hidden></div>
+        </div>
+      </div>
+
+      <div class="about-page" id="tab-about" hidden>
+        <h2 id="about-title"></h2>
+        <p id="about-description" style="font-size: 14px;"></p>
+        <div id="about-introduction" style="font-size: 14px;"></div>
+        <div class="about-links" id="about-links"></div>
+      </div>
+    </main>
+
+    <div class="export-bar" id="export-bar" hidden>
+      <span class="text-muted" style="font-size: 12px;">Export</span>
+      <div class="export-buttons">
+        <button class="export-button" data-export="project" type="button">project</button>
+        <button class="export-button" data-export="workflow" type="button">workflow</button>
+        <button class="export-button" data-export="subject-sets" type="button">subject-sets</button>
+        <button class="export-button" data-export="subjects" type="button">subjects</button>
+      </div>
+    </div>
+
+    <footer class="app-footer">
+      <span class="text-muted" style="font-size: 11px;">
+        Powered by Zooniverse · Panoptes API · zoo-playground
+      </span>
+    </footer>
+  </div>
+
+  <script
+    src="https://code.jquery.com/jquery-3.7.1.min.js"
+    integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo="
+    crossorigin="anonymous"></script>
+  <script src="app.js"></script>
+</body>
 </html>
