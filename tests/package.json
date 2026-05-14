@@ -1,0 +1,13 @@
+{
+  "name": "cosmic-canvas-tests",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "End-to-end Puppeteer tests for the Cosmic Canvas gh-pages site.",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 e2e.test.mjs"
+  },
+  "devDependencies": {
+    "puppeteer": "^24.0.0"
+  }
+}

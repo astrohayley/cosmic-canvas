@@ -14,6 +14,7 @@ Live: <https://astrohayley.github.io/cosmic-canvas/>
 | `app.js` | Classify loop, brush canvas, OAuth |
 | `styles.css` | Styling |
 | `.nojekyll` | Disables Jekyll preprocessing on GitHub Pages |
+| `tests/` | End-to-end Puppeteer tests (see `tests/README.md`) |
 
 ## Run locally
 
@@ -28,6 +29,17 @@ Open <http://localhost:3002/>. URL params override config:
 - `?project=32203` — Zooniverse project ID
 - `?workflow=31480` — workflow ID (default: project's first active workflow)
 - `?env=staging` — Panoptes environment
+
+## Tests
+
+End-to-end tests live in `tests/` and run with Node's built-in test runner against a self-starting static server:
+
+```bash
+cd tests && npm install
+npm test
+```
+
+See [`tests/README.md`](tests/README.md) for the per-test breakdown.
 
 ## Deploy
 
