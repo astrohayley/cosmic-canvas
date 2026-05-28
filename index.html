@@ -20,6 +20,7 @@
       </div>
       <nav class="header-nav">
         <button class="tab-button active" data-tab="classify" type="button">Classify</button>
+        <button class="tab-button" id="tutorial-open-button" type="button">Tutorial</button>
         <button class="tab-button" data-tab="about" type="button" hidden>About</button>
         <a class="tab-button" id="talk-link" target="_blank" rel="noopener noreferrer" hidden>Talk</a>
         <button class="tab-button" id="auth-button" type="button">Sign in</button>
@@ -27,6 +28,7 @@
     </header>
 
     <main class="app-main">
+      <div class="auth-error-banner" id="auth-error-banner" role="alert" hidden></div>
       <div class="center-state" id="state-loading">
         <p>Loading project from production…</p>
       </div>
@@ -40,10 +42,20 @@
       <div class="classify-layout" id="tab-classify" hidden>
         <div class="classify-subject">
           <div class="brush-tool">
+            <div class="image-thumbnails" id="image-thumbnails" role="tablist" aria-label="Subject images" hidden></div>
             <div class="brush-canvas-wrap">
-              <canvas id="brush-canvas" width="500" height="500"></canvas>
+              <div class="brush-canvas-stack">
+                <canvas id="brush-canvas" width="500" height="500"></canvas>
+                <canvas id="brush-cursor-overlay" class="brush-cursor-overlay" width="500" height="500"></canvas>
+                <a id="subject-talk-link" class="subject-talk-link" target="_blank" rel="noopener noreferrer" hidden>View on Talk</a>
+              </div>
             </div>
             <div class="brush-controls">
+              <div class="brush-mode-toggle" role="group" aria-label="Drawing tool mode">
+                <button class="brush-mode-btn active" id="brush-mode-brush" type="button" aria-pressed="true">Brush</button>
+                <button class="brush-mode-btn" id="brush-mode-eraser" type="button" aria-pressed="false">Eraser</button>
+              </div>
+              <span class="brush-mode-indicator brush" id="brush-mode-indicator">Mode: Brush</span>
               <label class="brush-control-label">
                 <span style="font-size: 12px;">Size: <span id="brush-size-label">12</span>px</span>
                 <input type="range" min="1" max="80" value="12" class="brush-slider" id="brush-size" />
@@ -52,12 +64,14 @@
               <div class="brush-actions">
                 <button class="brush-action-btn" id="brush-undo" type="button" title="Undo">Undo</button>
                 <button class="brush-action-btn" id="brush-clear" type="button" title="Clear all">Clear</button>
+                <button class="brush-action-btn" id="brush-reset-mask" type="button" title="Reset to seeded machine mask" disabled>Reset mask</button>
               </div>
             </div>
             <div class="subject-meta">
               <span class="text-muted" style="font-size: 12px;">
                 Subject <span id="subject-id"></span> — draw on the image, then click Done
               </span>
+              <span class="mask-info-badge" id="mask-info-badge">Mask: none (none)</span>
             </div>
           </div>
           <div class="subject-progress">
@@ -98,6 +112,37 @@
         Powered by Zooniverse · Panoptes API · zoo-playground
       </span>
     </footer>
+
+    <section
+      class="tutorial-popup"
+      id="tutorial-popup"
+      role="dialog"
+      aria-modal="false"
+      aria-labelledby="tutorial-popup-title"
+      aria-describedby="tutorial-popup-description"
+      hidden
+    >
+      <header class="tutorial-popup-header">
+        <strong class="tutorial-popup-kicker">Quick Tutorial</strong>
+        <button type="button" class="tutorial-close-button" id="tutorial-close-x" aria-label="Close tutorial">×</button>
+      </header>
+      <div class="tutorial-popup-media">
+        <img id="tutorial-image" class="tutorial-popup-image" alt="" />
+      </div>
+      <div class="tutorial-popup-content">
+        <h3 id="tutorial-popup-title" class="tutorial-popup-title"></h3>
+        <p id="tutorial-popup-description" class="tutorial-popup-copy"></p>
+      </div>
+      <div class="tutorial-popup-footer">
+        <span class="tutorial-popup-progress" id="tutorial-progress">Step 1 of 4</span>
+        <div class="tutorial-popup-controls">
+          <button type="button" class="tutorial-control-button" id="tutorial-back" disabled>Back</button>
+          <button type="button" class="tutorial-control-button" id="tutorial-close">Close</button>
+          <button type="button" class="tutorial-control-button tutorial-control-button-primary" id="tutorial-next">Next</button>
+        </div>
+      </div>
+      <div class="tutorial-popup-steps" id="tutorial-steps" aria-label="Tutorial step navigation"></div>
+    </section>
   </div>
 
   <script

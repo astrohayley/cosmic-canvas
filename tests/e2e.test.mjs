@@ -97,6 +97,11 @@ test('brush strokes serialize to {lines, width, height} wire format', async () =
   await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
   await waitForClassifyReady(page);
 
+  // Let the threshold mask seed settle, then clear it so we isolate the user stroke.
+  await new Promise(r => setTimeout(r, 1500));
+  await page.click('#brush-clear');
+  await new Promise(r => setTimeout(r, 50));
+
   const box = await page.evaluate(() => {
     const r = document.getElementById('brush-canvas').getBoundingClientRect();
     return { x: r.x, y: r.y, w: r.width, h: r.height };
@@ -126,7 +131,7 @@ test('brush strokes serialize to {lines, width, height} wire format', async () =
   await page.close();
 });
 
-test('sign-in builds authorize URL with response_type=code and configured client_id', async () => {
+test('sign-in builds authorize URL with response_type=token (implicit grant) and configured client_id', async () => {
   const page = await newPage();
   await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
   await waitForClassifyReady(page);
@@ -148,7 +153,7 @@ test('sign-in builds authorize URL with response_type=code and configured client
 
   assert.ok(intercepted, 'clicking Sign in should redirect to /oauth/authorize');
   const u = new URL(intercepted);
-  assert.equal(u.searchParams.get('response_type'), 'code');
+  assert.equal(u.searchParams.get('response_type'), 'token');
   assert.equal(u.searchParams.get('client_id'), oauth.clientId);
   assert.equal(u.searchParams.get('redirect_uri'), baseUrl);
   assert.equal(u.searchParams.get('scope'), oauth.scope);
@@ -156,10 +161,11 @@ test('sign-in builds authorize URL with response_type=code and configured client
   await page.close();
 });
 
-test('?code callback exchanges for a bearer (no client_secret) and authenticates classifications', async () => {
+const isApiMe = (url) => /\/api\/me(\?|$)/.test(url);
+
+test('#access_token callback persists the bearer and authenticates classifications', async () => {
   const page = await newPage();
 
-  let tokenPostBody = null;
   let classificationHeaders = null;
 
   await page.setRequestInterception(true);
@@ -167,24 +173,7 @@ test('?code callback exchanges for a bearer (no client_secret) and authenticates
     const url = req.url();
     const method = req.method();
 
-    if (url === 'https://panoptes.zooniverse.org/oauth/token' && method === 'POST') {
-      tokenPostBody = req.postData();
-      await req.respond({
-        status: 200,
-        contentType: 'application/json',
-        headers: { 'Access-Control-Allow-Origin': '*' },
-        body: JSON.stringify({
-          access_token: FAKE_BEARER,
-          token_type: 'Bearer',
-          expires_in: 7200,
-          refresh_token: 'refresh',
-          scope: 'public classification',
-        }),
-      });
-      return;
-    }
-
-    if (url.endsWith('/api/me') && method === 'GET') {
+    if (isApiMe(url) && method === 'GET') {
       await req.respond({
         status: 200,
         contentType: 'application/vnd.api+json',
@@ -208,7 +197,14 @@ test('?code callback exchanges for a bearer (no client_secret) and authenticates
     req.continue();
   });
 
-  await page.goto(baseUrl + '?code=test-auth-code', { waitUntil: 'domcontentloaded' });
+  // Doorkeeper's implicit-grant callback returns the token in the URL fragment.
+  const hash = new URLSearchParams({
+    access_token: FAKE_BEARER,
+    token_type: 'Bearer',
+    expires_in: '7200',
+    scope: 'public classification',
+  }).toString();
+  await page.goto(baseUrl + '#' + hash, { waitUntil: 'domcontentloaded' });
   await waitForClassifyReady(page);
   await page.waitForFunction(() => {
     const t = sessionStorage.getItem('cosmic_canvas_token');
@@ -216,12 +212,7 @@ test('?code callback exchanges for a bearer (no client_secret) and authenticates
     try { return !!JSON.parse(t).user; } catch (_) { return false; }
   }, { timeout: 10000 });
 
-  const tokenForm = new URLSearchParams(tokenPostBody);
-  assert.equal(tokenForm.get('grant_type'), 'authorization_code');
-  assert.equal(tokenForm.get('code'), 'test-auth-code');
-  assert.equal(tokenForm.get('client_secret'), null, 'public clients must NOT send client_secret');
-
-  assert.equal(await page.url(), baseUrl, '?code should be scrubbed from the URL after exchange');
+  assert.equal(await page.url(), baseUrl, '#access_token should be scrubbed from the URL after pickup');
 
   const status = await page.$eval('#header-status', el => el.textContent);
   assert.match(status, new RegExp(FAKE_USER));
