@@ -24,7 +24,7 @@
     "start": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "echo \"No tests configured\"",
+    "test": "node --test src/**/*.test.mjs",
     "lint": "eslint src/**/*.{js,jsx}",
     "lint:fix": "eslint src/**/*.{js,jsx} --fix"
   }
