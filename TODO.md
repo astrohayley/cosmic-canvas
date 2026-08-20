@@ -20,15 +20,13 @@
   - Convert the decoded binary mask into the editable representation used by `BrushTool` without changing its alignment with the displayed subject images.
   - Preserve one shared annotation overlay when users switch among a subject's images.
   - Decide on behavior when mask metadata is absent or invalid.
-- Flatten brush annotations into a real-time binary mask instead of accumulating translucent canvas strokes.
-  - Treat every mask pixel as either foreground or background; overlapping brush passes must never increase opacity or produce darker regions.
-  - Brush operations set affected pixels to foreground, and eraser operations set affected pixels to background.
-  - Update the visible mask immediately while the pointer moves, with paint-program-like interaction rather than flattening only after a stroke or at submission time.
-  - Keep the displayed mask color and opacity uniform across all foreground pixels.
-  - Preserve correct undo, clear, reset-to-initial-mask, brush-size, image-switching, and submission behavior.
-  - Replace or adapt the current `react-canvas-draw` line-stack serialization so the submitted annotation represents the final binary mask without overlapping stroke artifacts.
-  - Encode the final edited binary mask using the same one-based `start length` RLE protocol and submit that RLE string in the Panoptes annotation JSON instead of the existing `react-canvas-draw` save-data string.
-  - Verify that the final mask can round-trip from metadata RLE through brush/eraser edits and back to submitted RLE without changing pixel membership.
+- [x] Flatten brush annotations into a real-time binary mask instead of accumulating translucent canvas strokes.
+  - [x] Treat every mask pixel as either foreground or background; overlapping brush passes never increase opacity or produce darker regions.
+  - [x] Make brush operations set foreground pixels and eraser operations clear them in real time.
+  - [x] Keep the displayed mask color and opacity uniform across all foreground pixels.
+  - [x] Preserve undo, clear, reset-to-initial-mask, brush-size, shared-overlay image switching, and submission behavior.
+  - [x] Submit the final edited mask as the same one-based `start length` RLE string instead of `react-canvas-draw` save data.
+  - [ ] Verify the complete metadata-RLE → edits → submitted-RLE round trip once subject metadata delivery is implemented.
 - Fetch another batch from the Panoptes subject queue when the current batch is exhausted instead of cycling back to the first loaded subject.
   - Avoid presenting subjects already classified or skipped during the session when possible.
   - Add loading, empty-queue, and fetch-error states.
@@ -43,5 +41,5 @@
 
 - Multiple images belonging to one subject share a single annotation overlay.
 - Anonymous production classifications are allowed.
-- Classifications are submitted to the Zooniverse Panoptes backend. They currently use serialized `react-canvas-draw` JSON; the binary-mask work may replace that internal annotation encoding.
+- Classifications are submitted to the Zooniverse Panoptes backend with the edited binary mask encoded as a one-based `start length` RLE string.
 - The mask-editing task is always present as `T0` in the default loaded workflow. Hard-coding `T0` in classification submissions is intentional.

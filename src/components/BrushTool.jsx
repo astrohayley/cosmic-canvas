@@ -1,44 +1,21 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
-import CanvasDraw from 'react-canvas-draw';
+import { encodeRLEMask } from '../utils/rleMask.mjs';
+import { paintMaskStroke } from '../utils/binaryMask.mjs';
 
-/**
- * Convert hex color to rgba with specified opacity
- */
-function hexToRgba(hex, alpha = 0.5) {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
+const DISPLAY_SIZE = 500;
+const MAX_UNDO_STATES = 30;
 
 function normalizeMaskConfig(machineMask = {}) {
   return {
     enabled: machineMask.enabled ?? true,
     threshold: machineMask.threshold ?? 128,
-    invert: machineMask.invert ?? false,
-    rowStep: machineMask.rowStep ?? 2,
-    colStep: machineMask.colStep ?? 2,
-    minRunLength: machineMask.minRunLength ?? 2,
-    maxLines: machineMask.maxLines ?? 8000,
-    opacity: machineMask.opacity ?? 0.28,
-    brushRadius: machineMask.brushRadius ?? 1,
-    canvasWidth: machineMask.canvasWidth ?? 500,
-    canvasHeight: machineMask.canvasHeight ?? 500
+    invert: machineMask.invert ?? false
   };
 }
 
 /**
- * BrushTool — canvas drawing tool for annotating subject images.
- *
- * Renders `react-canvas-draw` over the subject image. The brush stroke data
- * is passed back via `onAnnotate` as a JSON string that gets included in the
- * classification annotation submitted to Panoptes.
- *
- * Props:
- *   subject     — Panoptes subject (needs .locations for image URL)
- *   onAnnotate  — called with (saveData: string) on every stroke change
- *   onMaskInfo  — called with metadata when an initial machine mask is seeded
- *   brushConfig — brush tool configuration { colors, opacity, defaultSize }
+ * Binary mask editor for Panoptes subject images.
+ * Brush strokes set foreground pixels and eraser strokes clear them.
  */
 function BrushTool({
   subject,
@@ -50,241 +27,374 @@ function BrushTool({
   subjectTalkUrl
 }) {
   const canvasRef = useRef(null);
-  const undoInProgressRef = useRef(false);
+  const overlayCanvasRef = useRef(null);
+  const imagesRef = useRef([]);
+  const maskRef = useRef(null);
+  const initialMaskRef = useRef(null);
+  const dimensionsRef = useRef(null);
+  const historyRef = useRef([]);
+  const drawingRef = useRef(false);
+  const lastPointRef = useRef(null);
+  const cursorPointRef = useRef(null);
+  const activeImageIndexRef = useRef(0);
+  const brushColorRef = useRef(brushConfig?.colors?.[0] || '#00ff00');
+  const maskOpacityRef = useRef(brushConfig?.opacity ?? 0.3);
+  const brushSizeRef = useRef(brushConfig?.defaultSize || 12);
+  const toolModeRef = useRef('brush');
+
   const [brushSize, setBrushSize] = useState(brushConfig?.defaultSize || 12);
-  const [brushColor, setBrushColor] = useState(brushConfig?.colors?.[0] || '#00ff00');
+  const [brushColor, setBrushColor] = useState(brushColorRef.current);
   const [toolMode, setToolMode] = useState('brush');
-  const [initialMaskSaveData, setInitialMaskSaveData] = useState(null);
   const [maskInfo, setMaskInfo] = useState({ source: 'none', status: 'none' });
+  const [hasInitialMask, setHasInitialMask] = useState(false);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canvasError, setCanvasError] = useState(null);
 
   const imageEntries = subject ? getImageEntries(subject) : [];
+  const imageSignature = imageEntries.map(entry => entry.url).join('\n');
   const activeImageIndex = imageEntries.length > 0
     ? Math.max(0, Math.min(selectedImageIndex, imageEntries.length - 1))
     : 0;
-  const imageUrl = imageEntries[activeImageIndex]?.url || null;
-  const seedImageEntry = imageEntries.length > 0 ? imageEntries[imageEntries.length - 1] : null;
-  const seedImageUrl = seedImageEntry?.url || null;
   const seedImageIndex = imageEntries.length > 0 ? imageEntries.length - 1 : 0;
   const isEraser = toolMode === 'eraser';
-  const displayColor = isEraser ? '#ffffff' : brushColor;
-  const brushAlpha = isEraser ? 1 : (brushConfig?.opacity || 0.5);
   const machineMaskConfig = normalizeMaskConfig(brushConfig?.machineMask);
 
-  const applyCompositeMode = useCallback((mode) => {
-    const instance = canvasRef.current;
-    if (!instance?.ctx) return;
+  brushColorRef.current = brushColor;
+  maskOpacityRef.current = brushConfig?.opacity ?? 0.3;
+  activeImageIndexRef.current = activeImageIndex;
+  brushSizeRef.current = brushSize;
+  toolModeRef.current = toolMode;
 
-    const drawingMode = mode === 'eraser' ? 'destination-out' : 'source-over';
-    const drawingCtx = instance.ctx.drawing;
-    const tempCtx = instance.ctx.temp;
+  const renderCanvas = useCallback(() => {
+    const canvas = canvasRef.current;
+    const mask = maskRef.current;
+    const dimensions = dimensionsRef.current;
+    if (!canvas || !mask || !dimensions) return;
 
-    // Keep temp in normal draw mode so it can act as an opaque erase mask.
-    if (tempCtx && tempCtx.globalCompositeOperation !== 'source-over') {
-      tempCtx.globalCompositeOperation = 'source-over';
+    const context = canvas.getContext('2d');
+    if (!context) return;
+
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = '#000';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+
+    const activeImage = imagesRef.current[activeImageIndexRef.current];
+    if (activeImage) context.drawImage(activeImage, 0, 0, canvas.width, canvas.height);
+
+    let overlayCanvas = overlayCanvasRef.current;
+    if (!overlayCanvas) {
+      overlayCanvas = document.createElement('canvas');
+      overlayCanvasRef.current = overlayCanvas;
     }
-    if (drawingCtx && drawingCtx.globalCompositeOperation !== drawingMode) {
-      drawingCtx.globalCompositeOperation = drawingMode;
+    if (overlayCanvas.width !== dimensions.width || overlayCanvas.height !== dimensions.height) {
+      overlayCanvas.width = dimensions.width;
+      overlayCanvas.height = dimensions.height;
+    }
+
+    const overlayContext = overlayCanvas.getContext('2d');
+    if (!overlayContext) return;
+
+    const overlay = overlayContext.createImageData(dimensions.width, dimensions.height);
+    const { red, green, blue } = parseHexColor(brushColorRef.current);
+    const alpha = Math.round(255 * Math.max(0, Math.min(1, maskOpacityRef.current)));
+
+    for (let index = 0; index < mask.length; index += 1) {
+      if (mask[index] === 0) continue;
+      const offset = index * 4;
+      overlay.data[offset] = red;
+      overlay.data[offset + 1] = green;
+      overlay.data[offset + 2] = blue;
+      overlay.data[offset + 3] = alpha;
+    }
+
+    overlayContext.putImageData(overlay, 0, 0);
+    context.imageSmoothingEnabled = false;
+    context.drawImage(overlayCanvas, 0, 0, canvas.width, canvas.height);
+
+    const cursorPoint = cursorPointRef.current;
+    if (cursorPoint) {
+      context.save();
+      context.beginPath();
+      context.arc(cursorPoint.x, cursorPoint.y, brushSizeRef.current / 2, 0, Math.PI * 2);
+      context.lineWidth = 1.5;
+
+      if (toolModeRef.current === 'eraser') {
+        context.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+      } else {
+        context.fillStyle = `rgba(${red}, ${green}, ${blue}, 0.25)`;
+        context.strokeStyle = `rgba(${red}, ${green}, ${blue}, 0.95)`;
+        context.fill();
+      }
+
+      context.stroke();
+      context.restore();
     }
   }, []);
 
-  // Clear and seed a single initial mask per subject, based on the last image.
+  const emitAnnotation = useCallback(() => {
+    const mask = maskRef.current;
+    const dimensions = dimensionsRef.current;
+    if (!mask || !dimensions) return;
+    onAnnotate?.(encodeRLEMask(mask, dimensions));
+  }, [onAnnotate]);
+
+  const pushUndoState = useCallback(() => {
+    if (!maskRef.current) return;
+    historyRef.current.push(maskRef.current.slice());
+    if (historyRef.current.length > MAX_UNDO_STATES) historyRef.current.shift();
+    setCanUndo(true);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
 
-    const loadInitialMask = async () => {
-      const instance = canvasRef.current;
-      if (!instance) return;
-
-      instance.clear();
+    const initializeMask = async () => {
+      setCanvasError(null);
       setToolMode('brush');
-      setInitialMaskSaveData(null);
+      setHasInitialMask(false);
+      setCanUndo(false);
+      historyRef.current = [];
+      cursorPointRef.current = null;
+      maskRef.current = null;
+      initialMaskRef.current = null;
+      dimensionsRef.current = null;
+      imagesRef.current = [];
 
-      let saveData = null;
-      let info = { source: 'none', status: 'none' };
+      if (imageEntries.length === 0) {
+        const info = { source: 'none', status: 'empty' };
+        setMaskInfo(info);
+        onMaskInfo?.(info);
+        onAnnotate?.('');
+        return;
+      }
 
-      if (machineMaskConfig.enabled && seedImageUrl) {
-        try {
-          saveData = await buildThresholdMaskSaveData(seedImageUrl, {
-            ...machineMaskConfig,
-            color: brushColor,
-            opacity: brushConfig?.opacity ?? machineMaskConfig.opacity
-          });
-          if (saveData) {
-            info = {
-              source: 'threshold',
-              status: 'loaded',
-              threshold: machineMaskConfig.threshold,
-              invert: machineMaskConfig.invert,
-              imageIndex: seedImageIndex
-            };
-          } else {
-            info = {
-              source: 'threshold',
-              status: 'empty',
-              threshold: machineMaskConfig.threshold,
-              invert: machineMaskConfig.invert,
-              imageIndex: seedImageIndex
-            };
-          }
-        } catch (err) {
+      try {
+        const images = await Promise.all(imageEntries.map(entry => loadImage(entry.url)));
+        if (cancelled) return;
+
+        const dimensions = { width: images[0].naturalWidth, height: images[0].naturalHeight };
+        const mismatchedImageIndex = images.findIndex(image => (
+          image.naturalWidth !== dimensions.width || image.naturalHeight !== dimensions.height
+        ));
+        if (mismatchedImageIndex >= 0) {
+          throw new Error(`Image ${mismatchedImageIndex + 1} dimensions do not match image 1`);
+        }
+
+        imagesRef.current = images;
+        dimensionsRef.current = dimensions;
+
+        let mask = new Uint8Array(dimensions.width * dimensions.height);
+        let info = { source: 'none', status: 'none' };
+
+        if (machineMaskConfig.enabled) {
+          mask = buildThresholdMask(images[seedImageIndex], dimensions, machineMaskConfig);
+          const hasForeground = mask.some(pixel => pixel === 1);
           info = {
             source: 'threshold',
-            status: 'error',
+            status: hasForeground ? 'loaded' : 'empty',
             threshold: machineMaskConfig.threshold,
             invert: machineMaskConfig.invert,
-            imageIndex: seedImageIndex,
-            error: err.message
+            imageIndex: seedImageIndex
           };
-          console.warn('Failed to generate threshold seed mask:', err.message);
         }
+
+        maskRef.current = mask;
+        initialMaskRef.current = mask.slice();
+        setHasInitialMask(true);
+        setMaskInfo(info);
+        onMaskInfo?.(info);
+        renderCanvas();
+        emitAnnotation();
+      } catch (error) {
+        if (cancelled) return;
+        const info = {
+          source: machineMaskConfig.enabled ? 'threshold' : 'none',
+          status: 'error',
+          error: error.message
+        };
+        setCanvasError(error.message);
+        setMaskInfo(info);
+        onMaskInfo?.(info);
+        onAnnotate?.('');
+        console.warn('Failed to initialize binary mask:', error.message);
       }
-
-      if (cancelled) return;
-
-      if (saveData) {
-        instance.loadSaveData(saveData, true);
-        setInitialMaskSaveData(saveData);
-        applyCompositeMode('brush');
-        window.setTimeout(() => {
-          if (!cancelled && canvasRef.current && onAnnotate) {
-            onAnnotate(canvasRef.current.getSaveData());
-          }
-        }, 0);
-      } else if (onAnnotate) {
-        onAnnotate(null);
-      }
-
-      setMaskInfo(info);
-      onMaskInfo?.(info);
     };
 
-    loadInitialMask();
-
-    return () => {
-      cancelled = true;
-    };
+    initializeMask();
+    return () => { cancelled = true; };
   }, [
     subject?.id,
-    seedImageUrl,
+    imageSignature,
     seedImageIndex,
     machineMaskConfig.enabled,
     machineMaskConfig.threshold,
     machineMaskConfig.invert,
-    machineMaskConfig.rowStep,
-    machineMaskConfig.colStep,
-    machineMaskConfig.minRunLength,
-    machineMaskConfig.maxLines,
-    machineMaskConfig.opacity,
-    machineMaskConfig.brushRadius,
-    machineMaskConfig.canvasWidth,
-    machineMaskConfig.canvasHeight,
+    emitAnnotation,
     onAnnotate,
     onMaskInfo,
-    applyCompositeMode
+    renderCanvas
   ]);
 
   useEffect(() => {
-    applyCompositeMode(toolMode);
-  }, [toolMode, applyCompositeMode]);
+    renderCanvas();
+  }, [activeImageIndex, brushColor, brushSize, toolMode, brushConfig?.opacity, renderCanvas]);
 
-  const handleChange = useCallback(() => {
-    if (!undoInProgressRef.current) {
-      applyCompositeMode(toolMode);
+  const getCanvasPoint = (event) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: (event.clientX - rect.left) * (canvas.width / rect.width),
+      y: (event.clientY - rect.top) * (canvas.height / rect.height)
+    };
+  };
+
+  const paintBetween = (from, to) => {
+    const mask = maskRef.current;
+    const dimensions = dimensionsRef.current;
+    if (!mask || !dimensions) return;
+
+    paintMaskStroke(mask, dimensions, {
+      from: {
+        x: from.x * dimensions.width / DISPLAY_SIZE,
+        y: from.y * dimensions.height / DISPLAY_SIZE
+      },
+      to: {
+        x: to.x * dimensions.width / DISPLAY_SIZE,
+        y: to.y * dimensions.height / DISPLAY_SIZE
+      },
+      radiusX: (brushSize / 2) * dimensions.width / DISPLAY_SIZE,
+      radiusY: (brushSize / 2) * dimensions.height / DISPLAY_SIZE,
+      value: isEraser ? 0 : 1
+    });
+    renderCanvas();
+  };
+
+  const handlePointerDown = (event) => {
+    if (!maskRef.current || canvasError) return;
+    const point = getCanvasPoint(event);
+    if (!point) return;
+    event.preventDefault();
+    canvasRef.current?.setPointerCapture(event.pointerId);
+    cursorPointRef.current = point;
+    pushUndoState();
+    drawingRef.current = true;
+    lastPointRef.current = point;
+    paintBetween(point, point);
+  };
+
+  const handlePointerMove = (event) => {
+    const point = getCanvasPoint(event);
+    if (!point) return;
+    cursorPointRef.current = point;
+
+    if (!drawingRef.current) {
+      renderCanvas();
+      return;
     }
-    if (canvasRef.current && onAnnotate) {
-      onAnnotate(canvasRef.current.getSaveData());
+    if (!lastPointRef.current) return;
+    event.preventDefault();
+    paintBetween(lastPointRef.current, point);
+    lastPointRef.current = point;
+  };
+
+  const finishStroke = (event) => {
+    if (!drawingRef.current) return;
+    drawingRef.current = false;
+    lastPointRef.current = null;
+    if (event && canvasRef.current?.hasPointerCapture(event.pointerId)) {
+      canvasRef.current.releasePointerCapture(event.pointerId);
     }
-  }, [applyCompositeMode, onAnnotate, toolMode]);
+    emitAnnotation();
+  };
+
+  const handlePointerEnter = (event) => {
+    cursorPointRef.current = getCanvasPoint(event);
+    renderCanvas();
+  };
+
+  const handlePointerLeave = () => {
+    cursorPointRef.current = null;
+    renderCanvas();
+  };
 
   const handleUndo = () => {
-    // CanvasDraw replays historical lines during undo; replay must happen in
-    // normal draw compositing or eraser mode can clear the whole drawing.
-    undoInProgressRef.current = true;
-    applyCompositeMode('brush');
-    canvasRef.current?.undo();
-    // trigger onAnnotate after undo
-    setTimeout(() => {
-      undoInProgressRef.current = false;
-      applyCompositeMode(toolMode);
-      if (canvasRef.current && onAnnotate) {
-        onAnnotate(canvasRef.current.getSaveData());
-      }
-    }, 50);
+    const previousMask = historyRef.current.pop();
+    if (!previousMask) return;
+    maskRef.current = previousMask;
+    setCanUndo(historyRef.current.length > 0);
+    renderCanvas();
+    emitAnnotation();
   };
 
   const handleClear = () => {
-    canvasRef.current?.eraseAll();
-    if (onAnnotate) onAnnotate(null);
+    if (!maskRef.current) return;
+    pushUndoState();
+    maskRef.current.fill(0);
+    renderCanvas();
+    emitAnnotation();
   };
 
   const handleResetToInitialMask = () => {
-    if (!initialMaskSaveData || !canvasRef.current) return;
-    canvasRef.current.clear();
-    canvasRef.current.loadSaveData(initialMaskSaveData, true);
+    if (!initialMaskRef.current) return;
+    pushUndoState();
+    maskRef.current = initialMaskRef.current.slice();
     setToolMode('brush');
-    applyCompositeMode('brush');
-    setTimeout(() => {
-      if (canvasRef.current && onAnnotate) {
-        onAnnotate(canvasRef.current.getSaveData());
-      }
-    }, 0);
+    renderCanvas();
+    emitAnnotation();
   };
 
-  const handleWheel = (e) => {
-    const delta = e.deltaY > 0 ? 2 : -2;
-    setBrushSize(prev => Math.max(1, Math.min(80, prev + delta)));
+  const handleWheel = (event) => {
+    event.preventDefault();
+    const delta = event.deltaY > 0 ? 2 : -2;
+    setBrushSize(previous => Math.max(1, Math.min(80, previous + delta)));
   };
 
-  if (!subject) {
-    return <div className="subject-viewer-empty">No subject loaded</div>;
-  }
+  if (!subject) return <div className="subject-viewer-empty">No subject loaded</div>;
 
   return (
     <div className="brush-tool">
       {imageEntries.length > 1 && (
         <div className="image-thumbnails" role="tablist" aria-label="Subject images">
-          {imageEntries.map((entry, idx) => {
-            const isActive = idx === activeImageIndex;
+          {imageEntries.map((entry, index) => {
+            const isActive = index === activeImageIndex;
             return (
               <button
                 key={`${entry.locationIndex}-${entry.mimeType}`}
                 type="button"
                 className={`thumbnail-btn${isActive ? ' active' : ''}`}
-                onClick={() => onImageSelect?.(idx)}
-                aria-label={`Show image ${idx + 1}`}
+                onClick={() => onImageSelect?.(index)}
+                aria-label={`Show image ${index + 1}`}
                 aria-selected={isActive}
-                title={`Image ${idx + 1}`}
+                title={`Image ${index + 1}`}
               >
-                <img src={entry.url} alt={`Thumbnail ${idx + 1}`} className="thumbnail-image" />
-                <span className="thumbnail-count">{idx + 1}</span>
+                <img src={entry.url} alt={`Thumbnail ${index + 1}`} className="thumbnail-image" />
+                <span className="thumbnail-count">{index + 1}</span>
               </button>
             );
           })}
         </div>
       )}
 
-      <div className="brush-canvas-wrap" onWheelCapture={handleWheel}>
-        <CanvasDraw
+      <div className="brush-canvas-wrap" onWheel={handleWheel}>
+        <canvas
           ref={canvasRef}
-          onChange={handleChange}
-          imgSrc={imageUrl || ''}
-          brushColor={hexToRgba(displayColor, brushAlpha)}
-          brushRadius={brushSize}
-          canvasWidth={500}
-          canvasHeight={500}
-          lazyRadius={0}
-          catenaryColor={hexToRgba(displayColor, 0.9)}
-          hideInterface={false}
-          backgroundColor="#000"
+          width={DISPLAY_SIZE}
+          height={DISPLAY_SIZE}
+          className="binary-mask-canvas"
+          aria-label="Binary mask editor"
+          onPointerEnter={handlePointerEnter}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={finishStroke}
+          onPointerCancel={finishStroke}
+          onPointerLeave={handlePointerLeave}
         />
 
+        {canvasError && <div className="brush-canvas-error">{canvasError}</div>}
+
         {subjectTalkUrl && (
-          <a
-            href={subjectTalkUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="subject-talk-link"
-          >
+          <a href={subjectTalkUrl} target="_blank" rel="noopener noreferrer" className="subject-talk-link">
             View on Talk
           </a>
         )}
@@ -321,36 +431,38 @@ function BrushTool({
             min="1"
             max="80"
             value={brushSize}
-            onChange={(e) => setBrushSize(Number(e.target.value))}
+            onChange={(event) => setBrushSize(Number(event.target.value))}
             className="brush-slider"
           />
         </label>
 
         <div className="brush-colors">
-          {(brushConfig?.colors || ['#00ff00', '#ff0000', '#00bfff', '#ffff00', '#ff00ff', '#ffffff']).map(c => (
+          {(brushConfig?.colors || ['#00ff00']).map(color => (
             <button
-              key={c}
-              className={`brush-color-btn${brushColor === c ? ' active' : ''}`}
-              style={{ backgroundColor: c }}
-              onClick={() => setBrushColor(c)}
-              title={c}
+              key={color}
+              type="button"
+              className={`brush-color-btn${brushColor === color ? ' active' : ''}`}
+              style={{ backgroundColor: color }}
+              onClick={() => setBrushColor(color)}
+              title={color}
               disabled={isEraser}
+              aria-label={`Use mask color ${color}`}
             />
           ))}
         </div>
 
         <div className="brush-actions">
-          <button onClick={handleUndo} className="brush-action-btn" title="Undo">
+          <button onClick={handleUndo} className="brush-action-btn" title="Undo" disabled={!canUndo}>
             Undo
           </button>
-          <button onClick={handleClear} className="brush-action-btn" title="Clear all">
+          <button onClick={handleClear} className="brush-action-btn" title="Clear all" disabled={!maskRef.current}>
             Clear
           </button>
           <button
             onClick={handleResetToInitialMask}
             className="brush-action-btn"
             title="Reset to seeded machine mask"
-            disabled={!initialMaskSaveData}
+            disabled={!hasInitialMask}
           >
             Reset mask
           </button>
@@ -359,7 +471,7 @@ function BrushTool({
 
       <div className="subject-meta">
         <span className="text-muted" style={{ fontSize: '12px' }}>
-          Subject {subject.id} — draw on the image, then click Done
+          Subject {subject.id} — edit the binary mask, then click Done
         </span>
         <span className={`mask-info-badge ${maskInfo.status}`}>
           Mask: {maskInfo.source} ({maskInfo.status})
@@ -369,66 +481,29 @@ function BrushTool({
   );
 }
 
-async function buildThresholdMaskSaveData(imageUrl, options) {
-  const image = await loadImage(imageUrl);
+function buildThresholdMask(image, dimensions, options) {
   const canvas = document.createElement('canvas');
-  canvas.width = options.canvasWidth;
-  canvas.height = options.canvasHeight;
+  canvas.width = dimensions.width;
+  canvas.height = dimensions.height;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) throw new Error('Could not create the threshold mask canvas');
 
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return null;
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+  const mask = new Uint8Array(dimensions.width * dimensions.height);
 
-  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-  const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const lines = [];
-  const lineColor = hexToRgba(options.color, options.opacity);
-
-  outer: for (let y = 0; y < canvas.height; y += options.rowStep) {
-    let startX = -1;
-
-    for (let x = 0; x <= canvas.width; x += options.colStep) {
-      const inBounds = x < canvas.width;
-      let isMaskPixel = false;
-
-      if (inBounds) {
-        const index = (y * canvas.width + x) * 4;
-        const r = data[index];
-        const g = data[index + 1];
-        const b = data[index + 2];
-        const a = data[index + 3];
-        const luminance = Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b);
-        const thresholdHit = options.invert
-          ? luminance <= options.threshold
-          : luminance >= options.threshold;
-        isMaskPixel = a > 8 && thresholdHit;
-      }
-
-      if (isMaskPixel) {
-        if (startX < 0) startX = x;
-      } else if (startX >= 0) {
-        const endX = Math.min(canvas.width - 1, x - options.colStep);
-        if (endX - startX + 1 >= options.minRunLength) {
-          lines.push({
-            points: [{ x: startX, y }, { x: endX, y }],
-            brushColor: lineColor,
-            brushRadius: options.brushRadius
-          });
-          if (lines.length >= options.maxLines) {
-            break outer;
-          }
-        }
-        startX = -1;
-      }
-    }
+  for (let index = 0; index < mask.length; index += 1) {
+    const offset = index * 4;
+    const luminance = Math.round(
+      0.2126 * data[offset] + 0.7152 * data[offset + 1] + 0.0722 * data[offset + 2]
+    );
+    const thresholdHit = options.invert
+      ? luminance <= options.threshold
+      : luminance >= options.threshold;
+    mask[index] = data[offset + 3] > 8 && thresholdHit ? 1 : 0;
   }
 
-  if (lines.length === 0) return null;
-
-  return JSON.stringify({
-    lines,
-    width: canvas.width,
-    height: canvas.height
-  });
+  return mask;
 }
 
 function loadImage(src) {
@@ -436,24 +511,29 @@ function loadImage(src) {
     const image = new Image();
     image.crossOrigin = 'anonymous';
     image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('Image could not be loaded for threshold mask generation'));
+    image.onerror = () => reject(new Error('Subject image could not be loaded'));
     image.src = src;
   });
 }
 
 function getImageEntries(subject) {
   if (!subject?.locations) return [];
-
   const entries = [];
   subject.locations.forEach((location, locationIndex) => {
     Object.entries(location).forEach(([mimeType, url]) => {
-      if (mimeType.startsWith('image/')) {
-        entries.push({ mimeType, url, locationIndex });
-      }
+      if (mimeType.startsWith('image/')) entries.push({ mimeType, url, locationIndex });
     });
   });
-
   return entries;
+}
+
+function parseHexColor(hex) {
+  const normalized = /^#[0-9a-f]{6}$/i.test(hex) ? hex : '#00ff00';
+  return {
+    red: parseInt(normalized.slice(1, 3), 16),
+    green: parseInt(normalized.slice(3, 5), 16),
+    blue: parseInt(normalized.slice(5, 7), 16)
+  };
 }
 
 export default BrushTool;
