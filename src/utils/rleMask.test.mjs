@@ -1,7 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { decodeRLEMask, encodeRLEMask } from './rleMask.mjs';
+import {
+  decodeRLEMask,
+  encodeRLEMask,
+  getMetadataMaskRLE,
+  rotateMaskCounterClockwise
+} from './rleMask.mjs';
 
 test('decodes one-based start/length pairs in row-major order', () => {
   const pixels = decodeRLEMask('2 3 7 2', { height: 2, width: 4 });
@@ -34,6 +39,32 @@ test('round-trips the supplied production-format example', () => {
   const shape = { height: 500, width: 500 };
 
   assert.equal(encodeRLEMask(decodeRLEMask(rle, shape), shape), rle);
+});
+
+test('reads and round-trips the new subject metadata mask format', () => {
+  const metadata = { '#mask_rle': '2 3 7 2', '!RA': '85.7334616' };
+  const inputRle = getMetadataMaskRLE(metadata);
+
+  assert.equal(inputRle, '2 3 7 2');
+  assert.equal(encodeRLEMask(decodeRLEMask(inputRle, [2, 4]), [2, 4]), '2 3 7 2');
+});
+
+test('treats missing or non-string metadata masks as absent', () => {
+  assert.equal(getMetadataMaskRLE(null), null);
+  assert.equal(getMetadataMaskRLE({}), null);
+  assert.equal(getMetadataMaskRLE({ '#mask_rle': [1, 2] }), null);
+});
+
+test('rotates a decoded metadata mask 90 degrees counterclockwise', () => {
+  const pixels = Uint8Array.from([
+    1, 2, 3,
+    4, 5, 6
+  ]);
+
+  assert.deepEqual(
+    Array.from(rotateMaskCounterClockwise(pixels, { height: 2, width: 3 })),
+    [3, 6, 2, 5, 1, 4]
+  );
 });
 
 test('rejects malformed and out-of-bounds runs', () => {

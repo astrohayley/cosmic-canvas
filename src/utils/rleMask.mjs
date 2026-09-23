@@ -93,6 +93,48 @@ export function decodeRLEMask(maskRle, shape) {
 }
 
 /**
+ * Read the machine-mask seed from Panoptes subject metadata.
+ * The leading `#` marks the field as hidden in the standard classifier UI.
+ *
+ * @param {unknown} metadata
+ * @returns {string | null}
+ */
+export function getMetadataMaskRLE(metadata) {
+  if (!metadata || typeof metadata !== 'object') return null;
+  const value = metadata['#mask_rle'];
+  return typeof value === 'string' ? value : null;
+}
+
+/**
+ * Rotate a row-major pixel buffer 90 degrees counterclockwise.
+ * Metadata masks currently arrive 90 degrees clockwise relative to the
+ * displayed subject image, so this normalizes them into editor coordinates.
+ *
+ * @param {ArrayLike<number>} pixels
+ * @param {{ height: number, width: number } | [number, number]} shape
+ * @returns {Uint8Array}
+ */
+export function rotateMaskCounterClockwise(pixels, shape) {
+  const { height, width, pixelCount } = normalizeShape(shape);
+  if (!pixels || typeof pixels.length !== 'number') {
+    throw new TypeError('Mask pixels must be an array-like value');
+  }
+  if (pixels.length !== pixelCount) {
+    throw new RangeError(`Mask contains ${pixels.length} pixels; expected ${pixelCount}`);
+  }
+
+  const rotated = new Uint8Array(pixelCount);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const rotatedY = width - 1 - x;
+      const rotatedX = y;
+      rotated[rotatedY * height + rotatedX] = pixels[y * width + x];
+    }
+  }
+  return rotated;
+}
+
+/**
  * Encode a row-major binary pixel buffer into one-based `start length` RLE.
  * Any non-zero pixel is treated as foreground. Adjacent foreground pixels are
  * emitted as one run, so the output is flat even if edits previously overlapped.
