@@ -432,6 +432,30 @@ code {
   background: #000;
 }
 
+.binary-mask-canvas {
+  display: block;
+  width: min(500px, 100%);
+  height: auto;
+  aspect-ratio: 1;
+  cursor: none;
+  touch-action: none;
+}
+
+.brush-canvas-error {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 80%;
+  padding: var(--space-md);
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-sm);
+  background: rgba(17, 19, 25, 0.92);
+  color: var(--color-error);
+  text-align: center;
+  font-size: 13px;
+}
+
 .subject-talk-link {
   position: absolute;
   right: var(--space-sm);

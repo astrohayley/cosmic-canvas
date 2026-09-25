@@ -45,7 +45,7 @@ function App() {
   const [subjects, setSubjects] = useState([]);
   const [subjectIndex, setSubjectIndex] = useState(0);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
-  const [brushAnnotationData, setBrushAnnotationData] = useState(null);
+  const [maskAnnotationRle, setMaskAnnotationRle] = useState(null);
   const [maskSeedInfo, setMaskSeedInfo] = useState(null);
   const [classificationStartedAt, setClassificationStartedAt] = useState(null);
 
@@ -125,7 +125,7 @@ function App() {
   const advanceSubject = useCallback(() => {
     setSubjectIndex(prev => prev < subjects.length - 1 ? prev + 1 : 0);
     setSelectedImageIndex(0);
-    setBrushAnnotationData(null);
+    setMaskAnnotationRle(null);
     setMaskSeedInfo(null);
     setSubmissionResult(null);
     setClassificationStartedAt(new Date().toISOString());
@@ -172,7 +172,7 @@ function App() {
 
     try {
       const result = await panoptesService.createClassification({
-        annotations: [{ task: 'T0', value: brushAnnotationData || 'No annotation' }],
+        annotations: [{ task: 'T0', value: maskAnnotationRle ?? '' }],
         metadata: {
           workflow_version: workflow.version || '1.0',
           started_at: classificationStartedAt,
@@ -288,7 +288,7 @@ function App() {
                 subject={currentSubject}
                 selectedImageIndex={selectedImageIndex}
                 onImageSelect={setSelectedImageIndex}
-                onAnnotate={setBrushAnnotationData}
+                onAnnotate={setMaskAnnotationRle}
                 onMaskInfo={setMaskSeedInfo}
                 brushConfig={config.brushTool}
                 subjectTalkUrl={subjectTalkUrl}
