@@ -13,6 +13,9 @@
 # Exported API data
 /exports
 
+# Local AI project navigation notes
+/.codex-project-map.md
+
 # Misc
 .DS_Store
 .env
