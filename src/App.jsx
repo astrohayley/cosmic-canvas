@@ -111,7 +111,7 @@ function App() {
       setWorkflow(workflowData);
 
       const subjectData = await panoptesService.getSubjects(
-        workflowData.id, settings.environment, config.subjectBatchSize
+        workflowData.id, settings.environment, config.subjectBatchSize, settings.projectId
       );
       setSubjects(subjectData);
       setClassificationStartedAt(new Date().toISOString());
@@ -209,7 +209,9 @@ function App() {
         project:        () => panoptesService.getProject(project.id, settings.environment),
         workflow:       () => panoptesService.getWorkflow(workflow.id, settings.environment),
         'subject-sets': () => panoptesService.getSubjectSets(workflow.id, settings.environment),
-        subjects:       () => panoptesService.getSubjects(workflow.id, settings.environment, config.subjectBatchSize),
+        subjects:       () => panoptesService.getSubjects(
+          workflow.id, settings.environment, config.subjectBatchSize, settings.projectId
+        ),
       };
       const ids = { project: project.id, workflow: workflow.id, 'subject-sets': workflow.id, subjects: workflow.id };
       const data = await fetchers[type]();

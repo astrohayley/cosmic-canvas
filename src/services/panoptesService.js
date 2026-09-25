@@ -47,8 +47,9 @@ const panoptesService = {
     return response.data.subject_sets || [];
   },
 
-  async getSubjects(workflowId, environment = 'production', pageSize = 10) {
+  async getSubjects(workflowId, environment = 'production', pageSize = 10, projectId = null) {
     const apiUrl = API_URLS[environment] || API_URLS.production;
+    let queuedSubjects = [];
 
     // Try the queued endpoint first (what FEM's classifier uses)
     try {
@@ -57,11 +58,34 @@ const panoptesService = {
         params: { workflow_id: workflowId, page_size: pageSize, http_cache: true }
       });
       if (response.data.subjects?.length > 0) {
-        return response.data.subjects;
+        queuedSubjects = response.data.subjects;
+        if (queuedSubjects.some(subject => typeof subject.metadata?.['#mask_rle'] === 'string')) {
+          return queuedSubjects;
+        }
       }
     } catch (e) {
       // queued endpoint may require auth; fall back
     }
+
+    // Mask seeds now live in subject metadata. During subject-set migrations the
+    // workflow queue can temporarily continue serving the previous, mask-less
+    // set, so prefer a project-linked set that contains the new metadata field.
+    if (projectId) {
+      const project = await this.getProject(projectId, environment);
+      const projectSubjectSetIds = project.links?.subject_sets || [];
+      for (const subjectSetId of [...projectSubjectSetIds].reverse()) {
+        const response = await axios.get(`${apiUrl}/subjects`, {
+          headers,
+          params: { subject_set_id: subjectSetId, page_size: pageSize, http_cache: true }
+        });
+        const subjects = response.data.subjects || [];
+        if (subjects.some(subject => typeof subject.metadata?.['#mask_rle'] === 'string')) {
+          return subjects;
+        }
+      }
+    }
+
+    if (queuedSubjects.length > 0) return queuedSubjects;
 
     // Fallback: subjects via workflow's linked subject sets
     const workflow = await this.getWorkflow(workflowId, environment);

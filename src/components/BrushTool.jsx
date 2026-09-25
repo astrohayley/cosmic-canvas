@@ -1,5 +1,10 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { encodeRLEMask } from '../utils/rleMask.mjs';
+import {
+  decodeRLEMask,
+  encodeRLEMask,
+  getMetadataMaskRLE,
+  rotateMaskCounterClockwise
+} from '../utils/rleMask.mjs';
 import { paintMaskStroke } from '../utils/binaryMask.mjs';
 
 const DISPLAY_SIZE = 500;
@@ -9,8 +14,14 @@ function normalizeMaskConfig(machineMask = {}) {
   return {
     enabled: machineMask.enabled ?? true,
     threshold: machineMask.threshold ?? 128,
-    invert: machineMask.invert ?? false
+    invert: machineMask.invert ?? false,
+    canvasWidth: positiveIntegerOr(machineMask.canvasWidth, DISPLAY_SIZE),
+    canvasHeight: positiveIntegerOr(machineMask.canvasHeight, DISPLAY_SIZE)
   };
+}
+
+function positiveIntegerOr(value, fallback) {
+  return Number.isSafeInteger(value) && value > 0 ? value : fallback;
 }
 
 /**
@@ -172,25 +183,47 @@ function BrushTool({
         const images = await Promise.all(imageEntries.map(entry => loadImage(entry.url)));
         if (cancelled) return;
 
-        const dimensions = { width: images[0].naturalWidth, height: images[0].naturalHeight };
+        const imageDimensions = { width: images[0].naturalWidth, height: images[0].naturalHeight };
         const mismatchedImageIndex = images.findIndex(image => (
-          image.naturalWidth !== dimensions.width || image.naturalHeight !== dimensions.height
+          image.naturalWidth !== imageDimensions.width || image.naturalHeight !== imageDimensions.height
         ));
         if (mismatchedImageIndex >= 0) {
           throw new Error(`Image ${mismatchedImageIndex + 1} dimensions do not match image 1`);
         }
 
         imagesRef.current = images;
+        const metadataMaskRle = getMetadataMaskRLE(subject.metadata);
+        // Metadata masks are generated on the annotation canvas, which can be
+        // a different size from the compressed subject JPEG (currently 500px
+        // masks over 424px images).
+        const dimensions = metadataMaskRle !== null
+          ? {
+            width: machineMaskConfig.canvasWidth,
+            height: machineMaskConfig.canvasHeight
+          }
+          : imageDimensions;
         dimensionsRef.current = dimensions;
 
         let mask = new Uint8Array(dimensions.width * dimensions.height);
         let info = { source: 'none', status: 'none' };
 
-        if (machineMaskConfig.enabled) {
+        if (metadataMaskRle !== null) {
+          mask = rotateMaskCounterClockwise(
+            decodeRLEMask(metadataMaskRle, dimensions),
+            dimensions
+          );
+          const hasForeground = mask.some(pixel => pixel === 1);
+          info = {
+            source: 'metadata',
+            status: hasForeground ? 'loaded' : 'empty',
+            key: '#mask_rle',
+            rotation: '90deg-counterclockwise'
+          };
+        } else if (machineMaskConfig.enabled) {
           mask = buildThresholdMask(images[seedImageIndex], dimensions, machineMaskConfig);
           const hasForeground = mask.some(pixel => pixel === 1);
           info = {
-            source: 'threshold',
+            source: 'threshold-fallback',
             status: hasForeground ? 'loaded' : 'empty',
             threshold: machineMaskConfig.threshold,
             invert: machineMaskConfig.invert,
@@ -208,7 +241,9 @@ function BrushTool({
       } catch (error) {
         if (cancelled) return;
         const info = {
-          source: machineMaskConfig.enabled ? 'threshold' : 'none',
+          source: getMetadataMaskRLE(subject.metadata) !== null
+            ? 'metadata'
+            : (machineMaskConfig.enabled ? 'threshold-fallback' : 'none'),
           status: 'error',
           error: error.message
         };
