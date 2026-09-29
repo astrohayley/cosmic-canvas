@@ -5,9 +5,14 @@
   "type": "module",
   "description": "End-to-end Puppeteer tests for the Cosmic Canvas gh-pages site.",
   "scripts": {
-    "test": "node --test --test-concurrency=1 e2e.test.mjs parity.test.mjs",
+    "test": "node --test --test-concurrency=1 mask.test.mjs editor.test.mjs metadata-mask.test.mjs submission.test.mjs subject-queue.test.mjs e2e.test.mjs parity.test.mjs",
     "test:e2e": "node --test --test-concurrency=1 e2e.test.mjs",
-    "test:parity": "node --test --test-concurrency=1 parity.test.mjs"
+    "test:parity": "node --test --test-concurrency=1 parity.test.mjs",
+    "test:mask": "node --test mask.test.mjs",
+    "test:editor": "node --test editor.test.mjs",
+    "test:metadata": "node --test metadata-mask.test.mjs",
+    "test:submission": "node --test submission.test.mjs",
+    "test:queue": "node --test subject-queue.test.mjs"
   },
   "devDependencies": {
     "puppeteer": "^24.0.0"

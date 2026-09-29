@@ -92,13 +92,13 @@ test('anonymous classification submits to Panoptes and returns 201', async () =>
   await page.close();
 });
 
-test('brush strokes serialize to {lines, width, height} wire format', async () => {
+test('brush strokes serialize to a one-based start/length RLE string', async () => {
   const page = await newPage();
   await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
   await waitForClassifyReady(page);
 
-  // Let the threshold mask seed settle, then clear it so we isolate the user stroke.
-  await new Promise(r => setTimeout(r, 1500));
+  // Wait for the seed to land, then clear it so we isolate the user stroke.
+  await page.waitForFunction(() => window.__cosmicCanvas?.brush?.ready === true, { timeout: 30000 });
   await page.click('#brush-clear');
   await new Promise(r => setTimeout(r, 50));
 
@@ -115,18 +115,23 @@ test('brush strokes serialize to {lines, width, height} wire format', async () =
   await page.mouse.up();
   await new Promise(r => setTimeout(r, 100));
 
-  const parsed = JSON.parse(await page.evaluate(() => window.__cosmicCanvas.getSaveData()));
-  assert.equal(parsed.width, 500);
-  assert.equal(parsed.height, 500);
-  assert.equal(parsed.lines.length, 1);
-  assert.match(parsed.lines[0].brushColor, /^rgba\(\d+, \d+, \d+, [0-9.]+\)$/);
-  assert.equal(typeof parsed.lines[0].brushRadius, 'number');
-  assert.ok(parsed.lines[0].points.length >= 5);
+  const rle = await page.evaluate(() => window.__cosmicCanvas.getMaskRle());
+  assert.match(rle, /^\d+( \d+)*$/, 'the wire format is whitespace-delimited integers');
+
+  const tokens = rle.split(' ').map(Number);
+  assert.equal(tokens.length % 2, 0, 'tokens must pair as start/length');
+  assert.ok(tokens.every(n => Number.isSafeInteger(n) && n >= 1), 'starts and lengths are one-based');
+
+  const dimensions = await page.evaluate(() => window.__cosmicCanvas.brush.dimensions);
+  assert.equal(dimensions.width, 500);
+  assert.equal(dimensions.height, 500);
+  const highest = Math.max(...tokens.filter((_, i) => i % 2 === 0)
+    .map((start, i) => start - 1 + tokens[i * 2 + 1]));
+  assert.ok(highest <= dimensions.width * dimensions.height, 'runs stay inside the raster');
 
   await page.click('#brush-undo');
   await new Promise(r => setTimeout(r, 50));
-  const afterUndo = JSON.parse(await page.evaluate(() => window.__cosmicCanvas.getSaveData()));
-  assert.equal(afterUndo.lines.length, 0);
+  assert.equal(await page.evaluate(() => window.__cosmicCanvas.getMaskRle()), '');
 
   await page.close();
 });

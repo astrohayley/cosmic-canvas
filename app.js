@@ -1,3 +1,11 @@
+import {
+  decodeRLEMask,
+  encodeRLEMask,
+  getMetadataMaskRLE,
+  rotateMaskCounterClockwise,
+  paintMaskStroke
+} from './mask.js';
+
 (function () {
   'use strict';
 
@@ -68,7 +76,7 @@
     workflow: null,
     subjects: [],
     subjectIndex: 0,
-    brushAnnotation: null,
+    maskAnnotationRle: '',
     classifiedCount: 0,
     classificationStartedAt: null,
     authToken: null,
@@ -88,6 +96,14 @@
       return $.ajax({
         url: `${apiBase()}/subjects/queued`,
         data: { workflow_id: workflowId, page_size: pageSize, http_cache: true },
+        headers: authHeaders(),
+        method: 'GET',
+      }).then(data => data.subjects || []);
+    },
+    getSubjectSetSubjects(subjectSetId, pageSize) {
+      return $.ajax({
+        url: `${apiBase()}/subjects`,
+        data: { subject_set_id: subjectSetId, page_size: pageSize, http_cache: true },
         headers: authHeaders(),
         method: 'GET',
       }).then(data => data.subjects || []);
@@ -135,66 +151,77 @@
     });
   }
 
-  // Port of main's buildThresholdMaskSaveData — luminance-threshold to horizontal scan lines.
-  async function buildThresholdMaskSaveData(seedUrl, options) {
+  const DISPLAY_SIZE = 500;
+  const MAX_UNDO_STATES = 30;
+
+  function positiveIntegerOr(value, fallback) {
+    return Number.isSafeInteger(value) && value > 0 ? value : fallback;
+  }
+
+  function maskDimensions(machineMask) {
+    return {
+      width: positiveIntegerOr(machineMask?.canvasWidth, DISPLAY_SIZE),
+      height: positiveIntegerOr(machineMask?.canvasHeight, DISPLAY_SIZE),
+    };
+  }
+
+  function parseHexColor(hex) {
+    const normalized = String(hex || '').replace('#', '');
+    const value = parseInt(normalized.length === 3
+      ? normalized.split('').map(c => c + c).join('')
+      : normalized, 16);
+    if (!Number.isFinite(value)) return { red: 0, green: 191, blue: 255 };
+    return { red: (value >> 16) & 255, green: (value >> 8) & 255, blue: value & 255 };
+  }
+
+  // Luminance-threshold fallback seed, used when a subject carries no mask of
+  // its own. Writes foreground pixels straight into a binary buffer.
+  async function buildThresholdMask(seedUrl, dimensions, options) {
     const image = await loadImage(seedUrl);
     const canvas = document.createElement('canvas');
-    canvas.width = options.canvasWidth || 500;
-    canvas.height = options.canvasHeight || 500;
+    canvas.width = dimensions.width;
+    canvas.height = dimensions.height;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
     const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const lines = [];
-    const lineColor = hexToRgba(options.color, options.opacity);
 
-    outer: for (let y = 0; y < canvas.height; y += options.rowStep) {
-      let startX = -1;
-      for (let x = 0; x <= canvas.width; x += options.colStep) {
-        const inBounds = x < canvas.width;
-        let isMaskPixel = false;
-        if (inBounds) {
-          const i = (y * canvas.width + x) * 4;
-          const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
-          const luminance = Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b);
-          const thresholdHit = options.invert
-            ? luminance <= options.threshold
-            : luminance >= options.threshold;
-          isMaskPixel = a > 8 && thresholdHit;
-        }
-        if (isMaskPixel) {
-          if (startX < 0) startX = x;
-        } else if (startX >= 0) {
-          const endX = Math.min(canvas.width - 1, x - options.colStep);
-          if (endX - startX + 1 >= options.minRunLength) {
-            lines.push({
-              points: [{ x: startX, y }, { x: endX, y }],
-              brushColor: lineColor,
-              brushRadius: options.brushRadius,
-              isEraser: false,
-            });
-            if (lines.length >= options.maxLines) break outer;
-          }
-          startX = -1;
-        }
-      }
+    const mask = new Uint8Array(dimensions.width * dimensions.height);
+    for (let index = 0; index < mask.length; index += 1) {
+      const offset = index * 4;
+      const luminance = Math.round(
+        0.2126 * data[offset] + 0.7152 * data[offset + 1] + 0.0722 * data[offset + 2]
+      );
+      const thresholdHit = options.invert
+        ? luminance <= options.threshold
+        : luminance >= options.threshold;
+      if (data[offset + 3] > 8 && thresholdHit) mask[index] = 1;
     }
-    if (lines.length === 0) return null;
-    return JSON.stringify({ lines, width: canvas.width, height: canvas.height });
+    return mask;
   }
 
+  /**
+   * Binary mask editor. The mask is one Uint8Array per subject, shared across
+   * that subject's images. Brush strokes set pixels to 1, eraser strokes to 0,
+   * so repeated passes are idempotent and nothing ever accumulates opacity.
+   */
   const brush = {
     el: null,
     ctx: null,
     cursorEl: null,
     cursorCtx: null,
-    cursorPos: null,     // {x,y} or null when pointer is off canvas
+    cursorPos: null,     // {x,y} in display coords, or null when pointer is off canvas
     image: null,         // currently displayed subject image
     images: [],          // all decoded image entries for the subject {url, img}
     activeImageIndex: 0,
-    lines: [],
-    activeLine: null,
+    mask: null,          // Uint8Array, one byte per mask pixel
+    dimensions: null,    // {width, height} of the mask raster
+    initialMask: null,   // immutable seed, restored by Reset mask
+    history: [],         // previous mask buffers, most recent last
+    overlayEl: null,     // offscreen canvas the mask is painted into
+    overlayCtx: null,
+    lastPoint: null,
     pointerDown: false,
-    initialMaskSaveData: null,
+    ready: false,       // false while a subject's mask is still being seeded
     toolMode: 'brush',   // 'brush' | 'eraser'
     color: CONFIG.brushTool.colors[0] || '#00bfff',
     size: CONFIG.brushTool.defaultSize,
@@ -205,11 +232,8 @@
       this.ctx = this.el.getContext('2d');
       this.cursorEl = document.getElementById('brush-cursor-overlay');
       this.cursorCtx = this.cursorEl.getContext('2d');
-      // Offscreen strokes layer: eraser uses destination-out to punch only prior strokes, never the subject.
-      this.strokesEl = document.createElement('canvas');
-      this.strokesEl.width = this.el.width;
-      this.strokesEl.height = this.el.height;
-      this.strokesCtx = this.strokesEl.getContext('2d');
+      this.overlayEl = document.createElement('canvas');
+      this.overlayCtx = this.overlayEl.getContext('2d');
 
       const onDown = (e) => this.startStroke(e);
       const onMove = (e) => this.continueStroke(e);
@@ -282,6 +306,7 @@
       this.color = hex;
       $('#brush-colors .brush-color-btn').removeClass('active');
       $(`#brush-colors .brush-color-btn[data-color="${hex}"]`).addClass('active');
+      this.redraw();
       this.drawCursor();
     },
 
@@ -315,70 +340,80 @@
       };
     },
 
-    startStroke(e) {
-      if (e.button !== undefined && e.button !== 0) return;
-      this.pointerDown = true;
-      try { this.el.setPointerCapture?.(e.pointerId); } catch (_) {}
-      const p = this.pointFromEvent(e);
-      const eraser = this.toolMode === 'eraser';
-      this.activeLine = {
-        points: [p],
-        brushColor: hexToRgba(this.color, this.opacity),
-        brushRadius: this.size,
-        isEraser: eraser,
-      };
-      this.lines.push(this.activeLine);
+    // Display coordinates are canvas pixels; the mask raster may be a different
+    // size, so every stroke is scaled into mask space before it is stamped.
+    paintBetween(from, to) {
+      if (!this.mask || !this.dimensions) return;
+      const scaleX = this.dimensions.width / this.el.width;
+      const scaleY = this.dimensions.height / this.el.height;
+
+      paintMaskStroke(this.mask, this.dimensions, {
+        from: { x: from.x * scaleX, y: from.y * scaleY },
+        to: { x: to.x * scaleX, y: to.y * scaleY },
+        radiusX: this.size * scaleX,
+        radiusY: this.size * scaleY,
+        value: this.toolMode === 'eraser' ? 0 : 1,
+      });
       this.redraw();
     },
 
-    continueStroke(e) {
-      if (!this.pointerDown || !this.activeLine) return;
+    pushUndoState() {
+      if (!this.mask) return;
+      this.history.push(this.mask.slice());
+      if (this.history.length > MAX_UNDO_STATES) this.history.shift();
+      $('#brush-undo').prop('disabled', false);
+    },
+
+    startStroke(e) {
+      if (e.button !== undefined && e.button !== 0) return;
+      if (!this.mask || !this.ready) return;
+      this.pointerDown = true;
+      try { this.el.setPointerCapture?.(e.pointerId); } catch (_) {}
       const p = this.pointFromEvent(e);
-      const last = this.activeLine.points[this.activeLine.points.length - 1];
-      if (last && Math.hypot(p.x - last.x, p.y - last.y) < 0.5) return;
-      this.activeLine.points.push(p);
-      // Full redraw so live curve uses the same quadratic-Bézier smoothing as the post-mouseup replay.
-      this.redraw();
+      this.pushUndoState();
+      this.lastPoint = p;
+      this.paintBetween(p, p);
+    },
+
+    continueStroke(e) {
+      if (!this.pointerDown || !this.lastPoint) return;
+      const p = this.pointFromEvent(e);
+      this.paintBetween(this.lastPoint, p);
+      this.lastPoint = p;
     },
 
     endStroke() {
       if (!this.pointerDown) return;
       this.pointerDown = false;
-      const finished = this.activeLine;
-      this.activeLine = null;
-      if (finished) {
-        this.redraw();
-        state.brushAnnotation = this.getSaveData();
-      }
+      this.lastPoint = null;
+      this.emitAnnotation();
     },
 
     undo() {
-      if (!this.lines.length) return;
-      this.lines.pop();
+      const previous = this.history.pop();
+      if (!previous) return;
+      this.mask = previous;
+      $('#brush-undo').prop('disabled', this.history.length === 0);
       this.redraw();
-      state.brushAnnotation = this.lines.length ? this.getSaveData() : null;
+      this.emitAnnotation();
     },
 
     clear() {
-      this.lines = [];
-      this.activeLine = null;
+      if (!this.mask) return;
+      this.pushUndoState();
+      this.mask.fill(0);
       this.redraw();
-      state.brushAnnotation = null;
+      this.emitAnnotation();
     },
 
-    // Drop user strokes, reload the seeded threshold mask, flip back to brush mode.
+    // Drop user edits, restore the seeded mask, flip back to brush mode.
     resetMask() {
-      if (!this.initialMaskSaveData) return;
+      if (!this.initialMask) return;
+      this.pushUndoState();
+      this.mask = this.initialMask.slice();
       this.setMode('brush');
-      try {
-        const data = JSON.parse(this.initialMaskSaveData);
-        this.lines = data.lines.map((l) => ({ ...l }));
-      } catch (_) {
-        this.lines = [];
-      }
-      this.activeLine = null;
       this.redraw();
-      state.brushAnnotation = this.lines.length ? this.getSaveData() : null;
+      this.emitAnnotation();
     },
 
     setActiveImage(index) {
@@ -392,13 +427,28 @@
       this.redraw();
     },
 
-    // Load every image entry, render thumbnails, seed a machine mask from the last entry, paint the first.
+    getMaskRle() {
+      if (!this.mask || !this.dimensions) return '';
+      return encodeRLEMask(this.mask, this.dimensions);
+    },
+
+    emitAnnotation() {
+      state.maskAnnotationRle = this.getMaskRle();
+    },
+
+    // Load every image entry, render thumbnails, seed the mask, paint the first image.
     async paintSubject(subject) {
-      this.lines = [];
-      this.activeLine = null;
-      this.initialMaskSaveData = null;
+      const cfg = CONFIG.brushTool.machineMask || {};
+      this.dimensions = maskDimensions(cfg);
+      this.mask = new Uint8Array(this.dimensions.width * this.dimensions.height);
+      this.initialMask = null;
+      this.history = [];
+      this.lastPoint = null;
+      this.pointerDown = false;
+      this.ready = false;
       this.setMode('brush');
-      state.brushAnnotation = null;
+      $('#brush-undo').prop('disabled', true);
+      this.emitAnnotation();
 
       const entries = getImageEntries(subject);
       this.images = entries.map((e) => ({ ...e, img: null }));
@@ -410,6 +460,7 @@
         this.image = null;
         view.setMaskInfo({ source: 'none', status: 'none' });
         view.setResetMaskEnabled(false);
+        this.ready = true;
         this.redraw();
         return null;
       }
@@ -428,74 +479,53 @@
 
       // Seed from the last image entry (matches main's seedImageIndex = entries.length - 1).
       const seed = decoded[decoded.length - 1];
-      const cfg = CONFIG.brushTool.machineMask || {};
+      const metadataMaskRle = getMetadataMaskRLE(subject.metadata);
       let info = { source: 'none', status: 'none' };
-      if (cfg.enabled && seed?.img) {
+
+      if (metadataMaskRle !== null) {
+        // The machine mask ships in the subject's metadata, rendered on the
+        // annotation canvas (500px) rather than the compressed subject JPEG
+        // (424px), and rotated 90 degrees clockwise relative to what the
+        // volunteer sees. Rotate it back into editor coordinates.
         try {
-          const saveData = await buildThresholdMaskSaveData(seed.url, {
-            ...cfg,
-            color: this.color,
-            opacity: CONFIG.brushTool.opacity ?? cfg.opacity,
-            canvasWidth: this.el.width,
-            canvasHeight: this.el.height,
-          });
-          if (saveData) {
-            const parsed = JSON.parse(saveData);
-            this.lines = parsed.lines.map((l) => ({ ...l }));
-            this.initialMaskSaveData = saveData;
-            info = { source: 'threshold', status: 'loaded' };
-          } else {
-            info = { source: 'threshold', status: 'empty' };
-          }
+          this.mask = rotateMaskCounterClockwise(
+            decodeRLEMask(metadataMaskRle, this.dimensions),
+            this.dimensions
+          );
+          this.initialMask = this.mask.slice();
+          info = {
+            source: 'metadata',
+            status: this.mask.some(pixel => pixel === 1) ? 'loaded' : 'empty',
+          };
         } catch (err) {
-          info = { source: 'threshold', status: 'error', error: err.message };
+          info = { source: 'metadata', status: 'error', error: err.message };
+        }
+      } else if (cfg.enabled !== false && seed?.img) {
+        try {
+          this.mask = await buildThresholdMask(seed.url, this.dimensions, {
+            threshold: cfg.threshold ?? 128,
+            invert: cfg.invert ?? false,
+          });
+          this.initialMask = this.mask.slice();
+          info = {
+            source: 'threshold-fallback',
+            status: this.mask.some(pixel => pixel === 1) ? 'loaded' : 'empty',
+          };
+        } catch (err) {
+          info = { source: 'threshold-fallback', status: 'error', error: err.message };
         }
       }
       view.setMaskInfo(info);
-      view.setResetMaskEnabled(!!this.initialMaskSaveData);
+      view.setResetMaskEnabled(!!this.initialMask);
+      this.ready = true;
       this.redraw();
-      state.brushAnnotation = this.lines.length ? this.getSaveData() : null;
+      this.emitAnnotation();
       return this.image;
     },
 
     redraw() {
-      const { ctx, el, image, strokesCtx, strokesEl } = this;
-      // Pass 1: rebuild the strokes layer (brush as source-over, eraser as destination-out).
-      strokesCtx.globalCompositeOperation = 'source-over';
-      strokesCtx.clearRect(0, 0, strokesEl.width, strokesEl.height);
-      for (const line of this.lines) {
-        if (!line.points?.length) continue;
-        strokesCtx.save();
-        if (line.isEraser) {
-          strokesCtx.globalCompositeOperation = 'destination-out';
-          strokesCtx.strokeStyle = 'rgba(0,0,0,1)';
-        } else {
-          strokesCtx.globalCompositeOperation = 'source-over';
-          strokesCtx.strokeStyle = line.brushColor;
-        }
-        strokesCtx.lineWidth = line.brushRadius * 2;
-        strokesCtx.lineCap = 'round';
-        strokesCtx.lineJoin = 'round';
-        const pts = line.points;
-        strokesCtx.beginPath();
-        if (pts.length < 3) {
-          strokesCtx.moveTo(pts[0].x, pts[0].y);
-          for (let i = 1; i < pts.length; i++) strokesCtx.lineTo(pts[i].x, pts[i].y);
-        } else {
-          strokesCtx.moveTo(pts[0].x, pts[0].y);
-          for (let i = 1; i < pts.length - 1; i++) {
-            const mx = (pts[i].x + pts[i + 1].x) / 2;
-            const my = (pts[i].y + pts[i + 1].y) / 2;
-            strokesCtx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my);
-          }
-          const last = pts[pts.length - 1];
-          strokesCtx.lineTo(last.x, last.y);
-        }
-        strokesCtx.stroke();
-        strokesCtx.restore();
-      }
+      const { ctx, el, image, mask, dimensions } = this;
 
-      // Pass 2: black base → subject image → strokes layer on top.
       ctx.globalCompositeOperation = 'source-over';
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, el.width, el.height);
@@ -509,15 +539,53 @@
         const y = (el.height - h) / 2;
         ctx.drawImage(image, x, y, w, h);
       }
-      ctx.drawImage(strokesEl, 0, 0);
+      if (!mask || !dimensions) return;
+
+      // One flat colour at one alpha for every foreground pixel: crossings and
+      // repeated passes look exactly like a single pass.
+      const overlay = this.overlayEl;
+      if (overlay.width !== dimensions.width || overlay.height !== dimensions.height) {
+        overlay.width = dimensions.width;
+        overlay.height = dimensions.height;
+      }
+      const pixels = this.overlayCtx.createImageData(dimensions.width, dimensions.height);
+      const { red, green, blue } = parseHexColor(this.color);
+      const alpha = Math.round(255 * Math.max(0, Math.min(1, this.opacity)));
+      for (let index = 0; index < mask.length; index += 1) {
+        if (mask[index] === 0) continue;
+        const offset = index * 4;
+        pixels.data[offset] = red;
+        pixels.data[offset + 1] = green;
+        pixels.data[offset + 2] = blue;
+        pixels.data[offset + 3] = alpha;
+      }
+      this.overlayCtx.putImageData(pixels, 0, 0);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(overlay, 0, 0, el.width, el.height);
     },
 
-    getSaveData() {
-      return JSON.stringify({
-        lines: this.lines,
-        width: this.el.width,
-        height: this.el.height,
-      });
+    // Test hook: a cheap, comparable summary of the buffer.
+    maskStats() {
+      if (!this.mask || !this.dimensions) return null;
+      let foreground = 0;
+      let checksum = 0;
+      let onlyBinaryValues = true;
+      for (let index = 0; index < this.mask.length; index += 1) {
+        const value = this.mask[index];
+        if (value !== 0 && value !== 1) onlyBinaryValues = false;
+        if (value !== 0) {
+          foreground += 1;
+          checksum = (checksum * 31 + index) % 2147483647;
+        }
+      }
+      return {
+        length: this.mask.length,
+        width: this.dimensions.width,
+        height: this.dimensions.height,
+        foreground,
+        checksum,
+        onlyBinaryValues,
+      };
     },
   };
 
@@ -899,7 +967,7 @@
         state.workflow = await api.getWorkflow(active[0]);
       }
 
-      state.subjects = await api.getQueuedSubjects(state.workflow.id, CONFIG.subjectBatchSize);
+      state.subjects = await fetchSubjects();
       if (!state.subjects.length) throw new Error('No subjects in queue for this workflow');
 
       state.subjectIndex = 0;
@@ -917,9 +985,39 @@
     }
   }
 
+  const hasMetadataMask = (subjects) =>
+    subjects.some(subject => typeof subject.metadata?.['#mask_rle'] === 'string');
+
+  /**
+   * Mask seeds live in subject metadata. While a project is migrating subject
+   * sets the workflow queue can keep serving the previous, mask-less set, so
+   * prefer a project-linked set whose subjects carry the field.
+   */
+  async function fetchSubjects() {
+    let queued = [];
+    try {
+      queued = await api.getQueuedSubjects(state.workflow.id, CONFIG.subjectBatchSize);
+      if (hasMetadataMask(queued)) return queued;
+    } catch (_) {
+      // The queued endpoint may require auth; fall through to the subject sets.
+    }
+
+    const subjectSetIds = state.project?.links?.subject_sets || [];
+    for (const subjectSetId of [...subjectSetIds].reverse()) {
+      try {
+        const subjects = await api.getSubjectSetSubjects(subjectSetId, CONFIG.subjectBatchSize);
+        if (hasMetadataMask(subjects)) return subjects;
+      } catch (_) {
+        // A set we cannot read is not a reason to abandon the search.
+      }
+    }
+
+    return queued;
+  }
+
   function advanceSubject() {
     state.subjectIndex = (state.subjectIndex + 1) % state.subjects.length;
-    state.brushAnnotation = null;
+    state.maskAnnotationRle = '';
     state.classificationStartedAt = new Date().toISOString();
     view.hideSubmissionResult();
     view.renderSubject();
@@ -932,7 +1030,7 @@
 
     try {
       const payload = {
-        annotations: [{ task: 'T0', value: state.brushAnnotation || 'No annotation' }],
+        annotations: [{ task: 'T0', value: state.maskAnnotationRle ?? '' }],
         metadata: {
           workflow_version: state.workflow.version || '1.0',
           started_at: state.classificationStartedAt,
@@ -1009,7 +1107,14 @@
     OAUTH,
     state,
     brush,
-    getSaveData: () => brush.getSaveData(),
+    getMaskRle: () => brush.getMaskRle(),
+    mask: {
+      decodeRLEMask,
+      encodeRLEMask,
+      getMetadataMaskRLE,
+      rotateMaskCounterClockwise,
+      paintMaskStroke,
+    },
   };
 
   $(async function () {
