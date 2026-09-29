@@ -1,9 +1,12 @@
 /**
- * Codec for Cosmic Canvas masks.
+ * Codec and stamping for Cosmic Canvas masks.
  *
  * The wire format is a whitespace-delimited sequence of one-based
  * `start length` pairs. Pixels are flattened and reshaped in row-major
  * (C) order, matching NumPy's default `reshape((height, width))` behavior.
+ *
+ * Loaded as an ES module by both the browser (via index.html) and the Node
+ * test runner, so the shipped code and the tested code are the same bytes.
  */
 
 function normalizeShape(shape) {
@@ -43,10 +46,6 @@ function parseIntegerToken(token, label) {
  * A non-string value produces an all-background mask to match the supplied
  * Python reference implementation. Malformed strings throw rather than
  * silently returning a partially decoded mask.
- *
- * @param {unknown} maskRle
- * @param {{ height: number, width: number } | [number, number]} shape
- * @returns {Uint8Array}
  */
 export function decodeRLEMask(maskRle, shape) {
   const { pixelCount } = normalizeShape(shape);
@@ -95,9 +94,6 @@ export function decodeRLEMask(maskRle, shape) {
 /**
  * Read the machine-mask seed from Panoptes subject metadata.
  * The leading `#` marks the field as hidden in the standard classifier UI.
- *
- * @param {unknown} metadata
- * @returns {string | null}
  */
 export function getMetadataMaskRLE(metadata) {
   if (!metadata || typeof metadata !== 'object') return null;
@@ -109,10 +105,6 @@ export function getMetadataMaskRLE(metadata) {
  * Rotate a row-major pixel buffer 90 degrees counterclockwise.
  * Metadata masks currently arrive 90 degrees clockwise relative to the
  * displayed subject image, so this normalizes them into editor coordinates.
- *
- * @param {ArrayLike<number>} pixels
- * @param {{ height: number, width: number } | [number, number]} shape
- * @returns {Uint8Array}
  */
 export function rotateMaskCounterClockwise(pixels, shape) {
   const { height, width, pixelCount } = normalizeShape(shape);
@@ -138,10 +130,6 @@ export function rotateMaskCounterClockwise(pixels, shape) {
  * Encode a row-major binary pixel buffer into one-based `start length` RLE.
  * Any non-zero pixel is treated as foreground. Adjacent foreground pixels are
  * emitted as one run, so the output is flat even if edits previously overlapped.
- *
- * @param {ArrayLike<number>} pixels
- * @param {{ height: number, width: number } | [number, number]} shape
- * @returns {string}
  */
 export function encodeRLEMask(pixels, shape) {
   const { pixelCount } = normalizeShape(shape);
@@ -168,4 +156,47 @@ export function encodeRLEMask(pixels, shape) {
   }
 
   return runs.join(' ');
+}
+
+/** Paint a continuous elliptical stroke into a row-major binary mask. */
+export function paintMaskStroke(pixels, shape, stroke) {
+  const { width, height } = shape;
+  if (!(pixels instanceof Uint8Array) || pixels.length !== width * height) {
+    throw new RangeError('Binary mask dimensions do not match its pixel buffer');
+  }
+
+  // A radius below sqrt(1/2) can miss every pixel center when the pointer is
+  // exactly on integer coordinates. Keep the 1px brush reliably visible.
+  const radiusX = Math.max(0.75, stroke.radiusX);
+  const radiusY = Math.max(0.75, stroke.radiusY);
+  const distance = Math.hypot(stroke.to.x - stroke.from.x, stroke.to.y - stroke.from.y);
+  const spacing = Math.max(0.5, Math.min(radiusX, radiusY) / 2);
+  const steps = Math.max(1, Math.ceil(distance / spacing));
+  const value = stroke.value ? 1 : 0;
+
+  for (let step = 0; step <= steps; step += 1) {
+    const progress = step / steps;
+    const centerX = stroke.from.x + (stroke.to.x - stroke.from.x) * progress;
+    const centerY = stroke.from.y + (stroke.to.y - stroke.from.y) * progress;
+    paintEllipse(pixels, width, height, centerX, centerY, radiusX, radiusY, value);
+  }
+
+  return pixels;
+}
+
+function paintEllipse(pixels, width, height, centerX, centerY, radiusX, radiusY, value) {
+  const minX = Math.max(0, Math.floor(centerX - radiusX));
+  const maxX = Math.min(width - 1, Math.ceil(centerX + radiusX));
+  const minY = Math.max(0, Math.floor(centerY - radiusY));
+  const maxY = Math.min(height - 1, Math.ceil(centerY + radiusY));
+
+  for (let y = minY; y <= maxY; y += 1) {
+    for (let x = minX; x <= maxX; x += 1) {
+      const normalizedX = (x + 0.5 - centerX) / radiusX;
+      const normalizedY = (y + 0.5 - centerY) / radiusY;
+      if (normalizedX * normalizedX + normalizedY * normalizedY <= 1) {
+        pixels[y * width + x] = value;
+      }
+    }
+  }
 }
