@@ -161,7 +161,7 @@ test('sign-in builds authorize URL with response_type=token (implicit grant) and
   assert.equal(u.searchParams.get('response_type'), 'token');
   assert.equal(u.searchParams.get('client_id'), oauth.clientId);
   assert.equal(u.searchParams.get('redirect_uri'), baseUrl);
-  assert.equal(u.searchParams.get('scope'), oauth.scope);
+  assert.equal(u.searchParams.get('scope'), 'public', 'sign-in asks for the public scope only');
 
   await page.close();
 });
@@ -207,7 +207,7 @@ test('#access_token callback persists the bearer and authenticates classificatio
     access_token: FAKE_BEARER,
     token_type: 'Bearer',
     expires_in: '7200',
-    scope: 'public classification',
+    scope: 'public',
   }).toString();
   await page.goto(baseUrl + '#' + hash, { waitUntil: 'domcontentloaded' });
   await waitForClassifyReady(page);
