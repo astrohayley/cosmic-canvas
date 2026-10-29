@@ -51,7 +51,7 @@ import {
     clientId: 'EZTV_9hbbrlVWIdHuE_wiub8vtkXJCKiay1V0HfXzpQ',
     redirectUri: window.location.origin + window.location.pathname,
     authorizeUrl: PANOPTES_ORIGIN + '/oauth/authorize',
-    scope: 'public classification',
+    scope: 'public',
     storageKey: 'cosmic_canvas_token',
   };
 
@@ -96,14 +96,6 @@ import {
       return $.ajax({
         url: `${apiBase()}/subjects/queued`,
         data: { workflow_id: workflowId, page_size: pageSize, http_cache: true },
-        headers: authHeaders(),
-        method: 'GET',
-      }).then(data => data.subjects || []);
-    },
-    getSubjectSetSubjects(subjectSetId, pageSize) {
-      return $.ajax({
-        url: `${apiBase()}/subjects`,
-        data: { subject_set_id: subjectSetId, page_size: pageSize, http_cache: true },
         headers: authHeaders(),
         method: 'GET',
       }).then(data => data.subjects || []);
@@ -985,38 +977,23 @@ import {
     }
   }
 
-  const hasMetadataMask = (subjects) =>
-    subjects.some(subject => typeof subject.metadata?.['#mask_rle'] === 'string');
-
-  /**
-   * Mask seeds live in subject metadata. While a project is migrating subject
-   * sets the workflow queue can keep serving the previous, mask-less set, so
-   * prefer a project-linked set whose subjects carry the field.
-   */
-  async function fetchSubjects() {
-    let queued = [];
-    try {
-      queued = await api.getQueuedSubjects(state.workflow.id, CONFIG.subjectBatchSize);
-      if (hasMetadataMask(queued)) return queued;
-    } catch (_) {
-      // The queued endpoint may require auth; fall through to the subject sets.
-    }
-
-    const subjectSetIds = state.project?.links?.subject_sets || [];
-    for (const subjectSetId of [...subjectSetIds].reverse()) {
-      try {
-        const subjects = await api.getSubjectSetSubjects(subjectSetId, CONFIG.subjectBatchSize);
-        if (hasMetadataMask(subjects)) return subjects;
-      } catch (_) {
-        // A set we cannot read is not a reason to abandon the search.
-      }
-    }
-
-    return queued;
+  // Designator serves the workflow's queue, skipping seen and retired subjects.
+  function fetchSubjects() {
+    return api.getQueuedSubjects(state.workflow.id, CONFIG.subjectBatchSize);
   }
 
-  function advanceSubject() {
-    state.subjectIndex = (state.subjectIndex + 1) % state.subjects.length;
+  async function advanceSubject() {
+    if (state.subjectIndex + 1 < state.subjects.length) {
+      state.subjectIndex += 1;
+    } else {
+      const next = await fetchSubjects();
+      if (!next.length) {
+        view.showError('No more subjects in the queue for this workflow');
+        return;
+      }
+      state.subjects = next;
+      state.subjectIndex = 0;
+    }
     state.maskAnnotationRle = '';
     state.classificationStartedAt = new Date().toISOString();
     view.hideSubmissionResult();
