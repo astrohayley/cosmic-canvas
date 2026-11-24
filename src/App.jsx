@@ -105,9 +105,11 @@ function App() {
       const projectData = await panoptesService.getProject(settings.projectId, settings.environment);
       setProject(projectData);
 
-      const workflowData = settings.workflowId
-        ? await panoptesService.getWorkflow(settings.workflowId, settings.environment)
-        : await panoptesService.getActiveWorkflow(settings.projectId, settings.environment);
+      const workflowId = settings.workflowId || projectData.links?.active_workflows?.[0];
+      if (!workflowId) {
+        throw new Error(`Project ${settings.projectId} has no active workflows`);
+      }
+      const workflowData = await panoptesService.getWorkflow(workflowId, settings.environment);
       setWorkflow(workflowData);
 
       const subjectData = await panoptesService.getSubjects(

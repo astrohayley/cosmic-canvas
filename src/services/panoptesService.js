@@ -26,15 +26,6 @@ const panoptesService = {
     return response.data.workflows[0];
   },
 
-  async getActiveWorkflow(projectId, environment = 'production') {
-    const project = await this.getProject(projectId, environment);
-    const activeWorkflows = project.links?.active_workflows || [];
-    if (activeWorkflows.length === 0) {
-      throw new Error(`Project ${projectId} has no active workflows`);
-    }
-    return this.getWorkflow(activeWorkflows[0], environment);
-  },
-
   async getSubjectSets(workflowId, environment = 'production') {
     const apiUrl = API_URLS[environment] || API_URLS.production;
     const workflow = await this.getWorkflow(workflowId, environment);

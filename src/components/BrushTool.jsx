@@ -56,7 +56,6 @@ function BrushTool({
   const [brushSize, setBrushSize] = useState(brushConfig?.defaultSize || 12);
   const [brushColor, setBrushColor] = useState(brushColorRef.current);
   const [toolMode, setToolMode] = useState('brush');
-  const [maskInfo, setMaskInfo] = useState({ source: 'none', status: 'none' });
   const [hasInitialMask, setHasInitialMask] = useState(false);
   const [canUndo, setCanUndo] = useState(false);
   const [canvasError, setCanvasError] = useState(null);
@@ -173,7 +172,6 @@ function BrushTool({
 
       if (imageEntries.length === 0) {
         const info = { source: 'none', status: 'empty' };
-        setMaskInfo(info);
         onMaskInfo?.(info);
         onAnnotate?.('');
         return;
@@ -234,7 +232,6 @@ function BrushTool({
         maskRef.current = mask;
         initialMaskRef.current = mask.slice();
         setHasInitialMask(true);
-        setMaskInfo(info);
         onMaskInfo?.(info);
         renderCanvas();
         emitAnnotation();
@@ -248,7 +245,6 @@ function BrushTool({
           error: error.message
         };
         setCanvasError(error.message);
-        setMaskInfo(info);
         onMaskInfo?.(info);
         onAnnotate?.('');
         console.warn('Failed to initialize binary mask:', error.message);
@@ -507,9 +503,6 @@ function BrushTool({
       <div className="subject-meta">
         <span className="text-muted" style={{ fontSize: '12px' }}>
           Subject {subject.id} — edit the binary mask, then click Done
-        </span>
-        <span className={`mask-info-badge ${maskInfo.status}`}>
-          Mask: {maskInfo.source} ({maskInfo.status})
         </span>
       </div>
     </div>
