@@ -80,8 +80,7 @@ const readMask = () => Array.from(window.__cosmicCanvas.brush.mask);
 test('a subject mask is decoded, rotated counterclockwise, and loaded', async () => {
   const page = await openWithSubject({ withMask: true });
 
-  const badge = await page.$eval('#mask-info-badge', el => el.textContent.trim());
-  assert.equal(badge, 'Mask: metadata (loaded)');
+  assert.equal(await page.$('#mask-info-badge'), null);
 
   const actual = Uint8Array.from(await page.evaluate(readMask));
   const expected = rotateMaskCounterClockwise(decodeRLEMask(fixture.mask_rle, SHAPE), SHAPE);
@@ -203,8 +202,7 @@ test('Reset mask restores the subject mask, not a threshold guess', async () => 
 test('a subject with no #mask_rle falls back to the threshold seed', async () => {
   const page = await openWithSubject({ withMask: false });
 
-  const badge = await page.$eval('#mask-info-badge', el => el.textContent.trim());
-  assert.match(badge, /^Mask: threshold-fallback \((loaded|empty)\)$/);
+  assert.equal(await page.$eval('#brush-reset-mask', el => el.disabled), false);
 
   const actual = Uint8Array.from(await page.evaluate(readMask));
   const metadataMask = rotateMaskCounterClockwise(decodeRLEMask(fixture.mask_rle, SHAPE), SHAPE);
@@ -236,8 +234,9 @@ test('a malformed #mask_rle surfaces an error state instead of a blank canvas', 
   await page.waitForSelector('#tab-classify:not([hidden])', { timeout: 30000 });
   await page.waitForFunction(() => window.__cosmicCanvas?.brush?.ready === true, { timeout: 30000 });
 
-  const badge = await page.$eval('#mask-info-badge', el => el.textContent.trim());
-  assert.equal(badge, 'Mask: metadata (error)');
+  const error = await page.$eval('#brush-mask-error', el => ({ hidden: el.hidden, text: el.textContent }));
+  assert.equal(error.hidden, false);
+  assert.ok(error.text);
 
   await page.close();
 });
