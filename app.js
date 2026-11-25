@@ -439,6 +439,7 @@ import {
       this.pointerDown = false;
       this.ready = false;
       this.setMode('brush');
+      view.setMaskError('');
       $('#brush-undo').prop('disabled', true);
       this.emitAnnotation();
 
@@ -450,7 +451,6 @@ import {
 
       if (!entries.length) {
         this.image = null;
-        view.setMaskInfo({ source: 'none', status: 'none' });
         view.setResetMaskEnabled(false);
         this.ready = true;
         this.redraw();
@@ -472,7 +472,6 @@ import {
       // Seed from the last image entry (matches main's seedImageIndex = entries.length - 1).
       const seed = decoded[decoded.length - 1];
       const metadataMaskRle = getMetadataMaskRLE(subject.metadata);
-      let info = { source: 'none', status: 'none' };
 
       if (metadataMaskRle !== null) {
         // The machine mask ships in the subject's metadata, rendered on the
@@ -485,12 +484,8 @@ import {
             this.dimensions
           );
           this.initialMask = this.mask.slice();
-          info = {
-            source: 'metadata',
-            status: this.mask.some(pixel => pixel === 1) ? 'loaded' : 'empty',
-          };
         } catch (err) {
-          info = { source: 'metadata', status: 'error', error: err.message };
+          view.setMaskError(err.message);
         }
       } else if (cfg.enabled !== false && seed?.img) {
         try {
@@ -499,15 +494,10 @@ import {
             invert: cfg.invert ?? false,
           });
           this.initialMask = this.mask.slice();
-          info = {
-            source: 'threshold-fallback',
-            status: this.mask.some(pixel => pixel === 1) ? 'loaded' : 'empty',
-          };
         } catch (err) {
-          info = { source: 'threshold-fallback', status: 'error', error: err.message };
+          view.setMaskError(err.message);
         }
       }
-      view.setMaskInfo(info);
       view.setResetMaskEnabled(!!this.initialMask);
       this.ready = true;
       this.redraw();
@@ -826,11 +816,8 @@ import {
       });
     },
 
-    setMaskInfo(info) {
-      const txt = `Mask: ${info?.source || 'none'} (${info?.status || 'none'})`;
-      $('#mask-info-badge')
-        .text(txt)
-        .toggleClass('loaded', info?.status === 'loaded');
+    setMaskError(message) {
+      $('#brush-mask-error').text(message).prop('hidden', !message);
     },
 
     setResetMaskEnabled(enabled) {

@@ -111,8 +111,7 @@ test('subjects load from the workflow queue and never from subject sets', async 
     `no subject-set walk; saw ${requested.join(', ')}`
   );
 
-  const badge = await page.$eval('#mask-info-badge', el => el.textContent.trim());
-  assert.equal(badge, 'Mask: metadata (loaded)');
+  assert.equal(await page.$eval('#brush-reset-mask', el => el.disabled), false);
 
   assert.deepEqual(errors, [], errors.join('\n'));
   await page.close();
